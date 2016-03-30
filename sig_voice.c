@@ -24,6 +24,7 @@ static struct circle_buffer cb_snd;
 static char rcv_buf[MAX_PKT_LEN];
 static char snd_buf[MAX_PKT_LEN];
 
+void check_addto_rcvbuf(char *data, int len);
 void *sig_voice_thread(void *arg);			//主线程
 
 static volatile int stop_sv = 0;			//是否停止主线程 是=1  否=0
@@ -109,8 +110,8 @@ void handle_sig_voice(void)
 		else
 		{
 			DEBUG("Recv a udp packet!\n");
+			check_addto_rcvbuf(rcv_buf, ret);
 		}
-		usleep(300000);
 	}
 	DEBUG("Main loop stopped!\n");
 	close(serfd);
@@ -138,4 +139,66 @@ int start_server(void)
 	CHECK(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));
 	CHECK(bind(sockfd, (struct sockaddr*)&seraddr, sizeof(seraddr)));
 	return sockfd;
+}
+
+/*检测数据包格式和内容
+ * 这里有很多数字。
+ */
+void check_addto_rcvbuf(char *data, int len)
+{
+	struct control_sig *cs = (struct control_sig *)data;
+	if(len < 2)//包长度太短
+	{
+		INFO("Recv a bad len packet, len<2!!\n");
+		return;
+	}
+	if(cs->type != VC_TYPE) //包类型不正确,第一个字节必须是0x02
+	{
+		INFO("Recv a bad type packet, just drop it!\n");
+		return;
+	}
+
+	if(cs->cmd == CS_CMD) //是信令
+	{
+		int real = 0;
+		if(len != sizeof(struct control_sig))
+		{
+			INFO("Recv a bad sig packet, size not right!\n");
+			return;
+		}
+		if( cirbuf_get_free(&cb_rcv) < len )
+		{
+			INFO("Recv buffer full, just drop packet!\n");
+			return;
+		}
+		real = copy_cirbuf_from_user(&cb_rcv, data, len);
+		CHECK2((real != len));
+	}
+	else if(cs->cmd == V_CMD) //是语音
+	{
+		int real = 0;
+		struct voice *vc = (struct voice*)data;
+		if(len < 6)
+		{
+			INFO("Recv bad voice packet, len < 8\n");
+			return;
+		}
+		if(vc->len != len - 6)
+		{
+			INFO("Recv bad voice len packet, vc->len=%d, packet_len - 6 = %d\n", vc->len, len - 6);
+			return;
+		}
+		if(cirbuf_get_free(&cb_rcv) < len )
+		{
+			INFO("Recv buffer full, just drop packet!\n");
+			return;
+		}
+		real = copy_cirbuf_from_user(&cb_rcv, data, len);
+		CHECK2((real != len));
+	}
+	else
+	{
+		INFO("Recv a bad cmd type packet, just drop it!\n");
+		return;
+	}
 }

@@ -15,9 +15,8 @@ typedef unsigned int	uint32;
 /*----------------------------------------------------
  *平调系统 WEB与区长台语音实时下发/上传(UDP协议)
  */
-
+#define VC_TYPE 0x02
 //控制信令
-#define CS_TYPE		0x02
 #define CS_CMD		0x01
 #define CS_PRESS	0x00
 #define CS_RELEASE	0x01
@@ -33,7 +32,6 @@ struct control_sig
 }__attribute__((packed));
 
 //语音编码
-#define V_TYPE	0x02
 #define V_CMD	0x02
 struct voice
 {
