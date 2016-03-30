@@ -19,6 +19,7 @@ void check_data_type()
 	printf("struct detail:\t\t%d\n",      sizeof(struct detail));
 	printf("struct sched_pres:\t%d\n",    sizeof(struct sched_pres));
 }
+
 void test_debug()
 {
 	int y  = 3;
@@ -47,7 +48,11 @@ void test_debug()
 }
 int main()
 {
-	check_data_type();	
-	test_debug();
+	//check_data_type();	
+	//test_debug();
+	start_sig_voice();
+	sleep(10);
+	stop_sig_voice();
+	sleep(1);
 	return 0;
 }

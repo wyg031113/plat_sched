@@ -95,6 +95,26 @@ struct sched_pres
 	uint8	data[0];		//文本数据Data0 ~ DataN
 }__attribute__((packed));
 
+/*设置WEB端服务器IP和端口
+ * ipaddr: WEB端服务器IP
+ * p:	   WEB端服务器端口
+ */
+void set_webip_port(const char *ipaddr, unsigned short p);
+
+/*设置区长台服务器IP和端口
+ * ipaddr: 区长台服务器IP
+ * p:	   区长台端服务器端口
+ */
+void set_preip_port(const char *ipaddr, unsigned short p);
+
+/*启动sig voice 主线程
+ */
+void start_sig_voice(void);
+
+/*停止主线程
+ */
+void stop_sig_voice(void);
+
 //获取当前消息类型
 #define MSG_NOMSG -1		//缓冲区中无消息
 #define MSG_SIGNAL 0		//缓冲区头有一信令
