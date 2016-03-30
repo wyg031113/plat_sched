@@ -6,11 +6,23 @@
 
 #include "plat_sched.h"
 #include "debug.h"
+
 #define DEFAULT_TIME_OUT 100000			//recv的超时时间，单位:微秒
 #define MAX_PKT_LEN 1024
+#define RCV_CB_BUF_SIZE 2048
+#define SND_CB_BUF_SIZE 2048
 
-char rcv_buf[MAX_PKT_LEN];
-char snd_buf[MAX_PKT_LEN];
+/*接收和发送缓冲区定义
+ */
+static char rcv_cb_buf[RCV_CB_BUF_SIZE];
+static char snd_cb_buf[SND_CB_BUF_SIZE];
+static struct circle_buffer cb_rcv;
+static struct circle_buffer cb_snd;
+
+/*临时发送接受缓冲区
+ */
+static char rcv_buf[MAX_PKT_LEN];
+static char snd_buf[MAX_PKT_LEN];
 
 void *sig_voice_thread(void *arg);			//主线程
 
@@ -50,6 +62,9 @@ void start_sig_voice(void)
 {
 	pthread_t tid;
 	int ret = 0;
+
+	cirbuf_init(&cb_rcv, rcv_cb_buf, RCV_CB_BUF_SIZE);
+	cirbuf_init(&cb_snd, snd_cb_buf, SND_CB_BUF_SIZE);
 	CHECK2( (ret = pthread_create(&tid, NULL, sig_voice_thread, NULL)) == 0);
 }
 
@@ -101,7 +116,7 @@ void handle_sig_voice(void)
 	close(serfd);
 }
 
-/*创建socket，并且绑定地址
+/*创建UDP socket，并且绑定地址
  */
 int start_server(void)
 {

@@ -153,5 +153,55 @@ int put_voice(const struct voice *vc, uint32 len);
 
 
 
+/*循环缓冲区
+ */
+//-----!!! 环形缓冲区大小必须是2的n次方(2^n) !!!-----//
+
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+struct circle_buffer
+{
+	uint32 head; //缓冲区头
+	uint32 tail; //缓冲区尾
+	uint8  *buf; //缓冲区
+	uint32 size; //缓冲区大小
+};
+
+/*初始化环形缓冲区
+ * cb:要初始化的环形缓冲区
+ * buf:开辟好的空间指针
+ * size:开辟好的空间(buf)大小,size必须是2^n
+ */
+void cirbuf_init(struct circle_buffer *cb, uint8 *buf, int size);
+
+/*判断缓冲区cb是不是为空
+ * return: 0-非空 1-空
+ */
+inline int cirbuf_empty(struct circle_buffer *cb);
+
+
+/*判断缓冲区cb是不是为满
+ * return: 0-不满 1-满
+ */
+inline int cirbuf_full(struct circle_buffer *cb);
+
+/*获取缓冲区cb空闲大小
+ * return:缓冲区空闲空间大小
+ */
+uint32 cirbuf_get_free(struct circle_buffer *cb);
+
+/*把缓冲区中的数据移动len字节到user中
+ * user:用户缓冲区
+ * len:用户想移出字节数
+ * return:实际移动字节数
+ */
+int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len);
+
+/*把user中len字节数据移动到缓冲区中
+ * user:用户缓冲区
+ * len:用户想移入缓冲区字节数
+ * return:实际移动字节数
+ */
+int copy_cirbuf_from_user(struct circle_buffer *cb, const uint8  *user, uint32 len);
 
 #endif /*__PLAT_H__*/

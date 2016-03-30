@@ -2,7 +2,7 @@ all:main
 CC=gcc
 CFLAGS=-g
 LIBS=-lpthread
-OBJS=main.o sig_voice.o
+OBJS=main.o sig_voice.o circle_buf.o
 main:$(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) $(LIBS) -o $@
 %.o:%.c
