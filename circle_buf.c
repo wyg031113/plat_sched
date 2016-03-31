@@ -37,7 +37,6 @@ inline uint32 cirbuf_get_free(struct circle_buffer *cb)
 }
 
 
-
 int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len)
 {
 	uint32 l = 0;
