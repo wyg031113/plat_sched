@@ -163,8 +163,8 @@ int put_voice(struct voice *vc);
 void set_pre_serip_port(const char *ipaddr, unsigned short p);
 void start_pres_server(void);
 void stop_pres_server(void);
-
-
+inline int have_packet(void);
+int get_packet(char *buf, int len);
 
 
 /*循环缓冲区
