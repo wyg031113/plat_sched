@@ -6,11 +6,15 @@ typedef unsigned char	uint8;
 typedef unsigned short	uint16;
 typedef unsigned int	uint32;
 
+#define IPADDR_LEN 16
+
+#define WEB_HEART_BEAT_TIMEDOUT 5
 /*返回值 和 错误码定义*/
 #define PS_SUCCESS	0
 #define PS_FAIL		-1
-#define EBUFF_EMPTY	1
-#define EBUFF_FULL	2
+#define EBUFF_EMPTY	-2
+#define EBUFF_FULL	-3
+#define EUSER_BUFF_TOO_SHORT -4
 
 /*----------------------------------------------------
  *平调系统 WEB与区长台语音实时下发/上传(UDP协议)
@@ -23,6 +27,7 @@ typedef unsigned int	uint32;
 #define CS_UPLOAD	0x02
 #define CS_STOP		0x03
 #define CS_RECV		0x04
+#define CS_DATA_HEART_BEAT 0x02
 struct control_sig
 {
 	uint8 type;		//类型
@@ -132,21 +137,32 @@ int get_sig(struct control_sig *cs);
 /*获取一个语音消息
  *vc:接受消息缓冲区，由调用者创建
  *len:缓冲区大小
+ *return: 成功-PS_SUCC len太小-EUSER_BUF_TOO_SHORT 其他错误-FAIL
  */
 int get_voice(struct voice *vc, uint32 len);
 
 
 /*放入发送缓冲区一个信令消息包
  * cs:信令消息结构指针
+ * return: PS_SUCCESS-成功 EBUFF_FULL-缓冲区满，放入失败
+ *        PS_FAIL-失败，其他原因
  */
-int put_sig(const struct control_sig *cs);
+int put_sig(struct control_sig *cs);
 
 
 /*放入发送缓冲区一个语音消息包
  *vc:语音消息结构指针
- *len:消息结构总长度
+ *return: PS_SUCCESS-成功 EBUFF_FULL-缓冲区满，放入失败
+ *        PS_FAIL-失败，其他原因
  */
-int put_voice(const struct voice *vc, uint32 len);
+int put_voice(struct voice *vc);
+
+
+
+
+void set_pre_serip_port(const char *ipaddr, unsigned short p);
+void start_pres_server(void);
+void stop_pres_server(void);
 
 
 
@@ -154,7 +170,8 @@ int put_voice(const struct voice *vc, uint32 len);
 /*循环缓冲区
  */
 //-----!!! 环形缓冲区大小必须是2的n次方(2^n) !!!-----//
-
+#define COPY_ONLY 0 //只复制，不改变缓冲区头尾指针.
+#define COPY_CONS 1
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 struct circle_buffer
@@ -194,6 +211,7 @@ uint32 cirbuf_get_free(struct circle_buffer *cb);
  * return:实际移动字节数
  */
 int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len);
+int copy_cirbuf_to_user_flag(struct circle_buffer *cb, uint8 *user, uint32 len, int flag);
 
 /*把user中len字节数据移动到缓冲区中
  * user:用户缓冲区
@@ -202,4 +220,7 @@ int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len);
  */
 int copy_cirbuf_from_user(struct circle_buffer *cb, const uint8  *user, uint32 len);
 
+/*设置socfd非阻塞
+ */
+void setnonblocking(int sockfd);
 #endif /*__PLAT_H__*/

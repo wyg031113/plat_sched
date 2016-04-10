@@ -11,11 +11,12 @@
  */
 void cirbuf_init(struct circle_buffer *cb, uint8 *buf, int size)
 {
-	CHECK2(size > 1);
-	while(size > 1)
+	int t = size;
+	CHECK2(t > 1);
+	while(t > 1)
 	{
-		CHECK2( (size & 1) == 0 );
-		size >>= 1;
+		CHECK2( (t & 1) == 0 );
+		t >>= 1;
 	}
 	cb->head = cb->tail = 0;
 	cb->buf = buf;
@@ -39,6 +40,11 @@ inline uint32 cirbuf_get_free(struct circle_buffer *cb)
 
 int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len)
 {
+	return copy_cirbuf_to_user_flag(cb, user, len, COPY_CONS);	
+}
+
+int copy_cirbuf_to_user_flag(struct circle_buffer *cb, uint8 *user, uint32 len, int flag)
+{
 	uint32 l = 0;
 	uint32 head = cb->head;
 	uint32 tail = cb->tail;
@@ -47,12 +53,12 @@ int copy_cirbuf_to_user(struct circle_buffer *cb, uint8 *user, uint32 len)
 	l =  MIN(len, cb->size - (tail & (cb->size-1)));
 	memcpy(user, cb->buf + (tail & (cb->size-1)), l);
 	memcpy(user + l, cb->buf, len -l);
-	cb->tail += len;
-	DEBUG("to user:real_copy: %u bytes, buff_free:%u bytes, buff_used:%u bytes, buff_size:%u byte head:%u tail:%u\n", 
-			len, cirbuf_get_free(cb), cb->size - cirbuf_get_free(cb), cb->size, cb->head, cb->tail);
+	if(flag)
+		cb->tail += len;
+//	DEBUG("to user:real_copy: %u bytes, buff_free:%u bytes, buff_used:%u bytes, buff_size:%u byte head:%u tail:%u\n", 
+//			len, cirbuf_get_free(cb), cb->size - cirbuf_get_free(cb), cb->size, cb->head, cb->tail);
 	return len;
 }
-
 int copy_cirbuf_from_user(struct circle_buffer *cb, const uint8  *user, uint32 len)
 {
 	uint32 l = 0;
@@ -64,7 +70,7 @@ int copy_cirbuf_from_user(struct circle_buffer *cb, const uint8  *user, uint32 l
 	memcpy(cb->buf + (head & (cb->size-1)), user, l);
 	memcpy(cb->buf, user + l, len - l);
 	cb->head += len;
-	DEBUG("to buf:real_copy: %u bytes, buff_free:%u bytes, buff_used:%u bytes, buff_size:%u byte head:%u tail:%u\n", 
-			len, cirbuf_get_free(cb), cb->size - cirbuf_get_free(cb), cb->size, cb->head, cb->tail);
+//	DEBUG("to buf:real_copy: %u bytes, buff_free:%u bytes, buff_used:%u bytes, buff_size:%u byte head:%u tail:%u\n", 
+//			len, cirbuf_get_free(cb), cb->size - cirbuf_get_free(cb), cb->size, cb->head, cb->tail);
 	return len;
 }
