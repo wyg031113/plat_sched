@@ -1,3 +1,9 @@
 *.[oa]
 *~
 main
+pres_demo
+tags
+tcp_client
+tcp_server
+web_demo
+
