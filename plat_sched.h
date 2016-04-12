@@ -69,6 +69,9 @@ struct pres
 	uint8	data[0];		//数据内容
 }__attribute__((packed));
 
+
+#define D_TYPE_VOICE 0x04
+#define D_TYPE_TEXT 0x05
 //详细层数据格式
 struct detail
 {
@@ -81,6 +84,16 @@ struct detail
 	uint8	data[0];		//语音或者文本数据
 }__attribute__((packed));
 
+/*每次提交一个任务，如果要发文件，则把文件名
+ * 放到file数组中。
+ */
+#define FILE_NAME_LEN 128
+struct pres_task
+{
+	struct sess		se;
+	struct pres		pr;
+	struct detail	de;
+};
 //调车单服务器与区长台(TCP)协议(文本)
 //数据格式
 #define SP_DATA_TYPE		0x05

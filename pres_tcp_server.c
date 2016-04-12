@@ -253,11 +253,16 @@ void set_pre_serip_port(const char *ipaddr, unsigned short p)
 	pres_ser_port = p;
 	DEBUG("set pres server ip:%s port:%d\n", pres_ser_ip, pres_ser_port);
 }
+
+/*判断缓冲区中有没有包
+ */
 inline int have_packet(void)
 {
 	return !cirbuf_empty(&cb_rcv_ser);
 }
 
+/*从缓冲区中获取包
+ */
 int get_packet(char *buf, int len)
 {
 	struct sched_pres *sp;

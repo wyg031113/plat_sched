@@ -51,11 +51,11 @@ int main()
 	//check_data_type();	
 	//test_debug();
 	//start_sig_voice();
-	//start_tcp_client();
-	start_pres_server();
-	sleep(50);
-	stop_pres_server();
+	start_tcp_client();
+	//start_pres_server();
+	sleep(10);
+	//stop_pres_server();
 	//stop_sig_voice();
-	//stop_tcp_client();
+	stop_tcp_client();
 	return 0;
 }
