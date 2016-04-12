@@ -172,6 +172,13 @@ int put_voice(struct voice *vc);
 
 
 
+void start_tcp_client(void);
+void stop_tcp_client(void);
+void set_app_ip(const char *ipaddr, unsigned short port);
+inline int is_connected(void);
+inline int is_busy(void);
+int submit_task(char *task, int len, const char *file_name);
+
 
 void set_pre_serip_port(const char *ipaddr, unsigned short p);
 void start_pres_server(void);

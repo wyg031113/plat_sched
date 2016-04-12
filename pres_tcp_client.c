@@ -4,7 +4,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-
+#include <signal.h>
 #include "plat_sched.h"
 #include "debug.h"
 
@@ -69,15 +69,20 @@ pthread_t tcp_client_tid;
 
 int connect_app(void)
 {
+//	int set = 1;
+	int ret;
 	struct sockaddr_in app_addr;
 	CHECK(app_fd = socket(AF_INET, SOCK_STREAM, 0));
 	bzero(&app_addr, sizeof(app_addr));
 	app_addr.sin_family = AF_INET;
 	app_addr.sin_addr.s_addr = inet_addr(app_ip);
 	app_addr.sin_port = htons(app_port);
-	return connect(app_fd, (struct sockaddr*)&app_addr, 
-							sizeof(struct sockaddr));
+
+
+//	setsockopt(app_fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&set,sizeof(int));
+	ret =  connect(app_fd, (struct sockaddr*)&app_addr, sizeof(struct sockaddr));
 	setnonblocking(app_fd);
+	return ret;
 }
 
 
@@ -108,6 +113,7 @@ void start_tcp_client(void)
 	int ret = 0;
 	cirbuf_init(&cb_rcv_tcp, rcv_tcp_cb_buf, RCV_TCP_BUF_SIZE);
 	cirbuf_init(&cb_snd_tcp, snd_tcp_cb_buf, SND_TCP_BUF_SIZE);
+	signal(SIGPIPE, SIG_IGN);
 	CHECK2((ret = pthread_create(&tcp_client_tid, NULL, tcp_client_thread, NULL)) == 0);
 	INFO("tcp client started!\n");
 }
@@ -338,6 +344,7 @@ int submit_task(char *task, int len, const char *file_name)
 			INFO("File name too long\n");
 			return PS_FAIL;
 		}
+		strcpy(file, file_name);
 	}
 	if(len > MAX_TASK_LEN)
 	{
@@ -345,7 +352,6 @@ int submit_task(char *task, int len, const char *file_name)
 		return PS_FAIL;
 	}
 	memcpy(task_buf, task, len);
-	strcpy(file, file_name);
 	status = NEW_TASK;
 	task_len = len;
 	be_busy = 1;
