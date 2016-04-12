@@ -35,7 +35,7 @@ void inc_task()
 int main()
 {
 	start_tcp_client();
-	int cnt = 1000000;
+	int cnt = 300000;
 	while(cnt--)
 	{
 		if(!is_busy())

@@ -30,58 +30,33 @@ int start_listen(void)
 #define TASK_LEN 2048
 char rcv_buf[TASK_LEN];
 int offset = 0;
-int flag = 0;
-int data_len = 0;
+void show_binary(char *buf, int len)
+{
+	int i;
+	for(i = 0; i < len; i++)
+		printf("%x ", (unsigned char)buf[i]);
+	printf("\n");
+}
 void show(char *buf, int len)
 {
 	int i;
 	struct pres_task *pt = (struct pres_task*)buf;
-	if(flag == 0)
-	{
+	int data_len = pt->de.len + sizeof(struct pres_task);
+	if(data_len > len)
+		return;
 
 		printf("session: data_len:%d flag:%d\n", pt->se.len, pt->se.flag);
 		printf("present: src_code:%x dst_code:%x len:%d\n", 
 			pt->pr.src_tel_code, pt->pr.dst_tel_code, pt->pr.len);
 		printf("detail:time:%x type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
 			pt->de.time, pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
-		data_len = pt->de.len;
-		int rcv_data_len = len - sizeof(struct pres_task);
-		int print_len=0;
-		if(rcv_data_len < data_len)
-		{
-			flag = 1;
-			print_len = rcv_data_len;
-			data_len -= rcv_data_len;
-			offset = 0;
-		}
-		else
-		{
-			flag = 0;
-			print_len = data_len;
-			data_len = 0;
-		}
-		for(i = 0; i < print_len; i++)
-			printf("%c", pt->de.data[i]);
-		int x = sizeof(struct pres_task)+print_len;
-		memmove(buf, buf+x, len-x);
-		offset = len-x;
-	}
-	else
-	{
-		int print_len = data_len < len ? data_len : len;
-		for(i = 0; i < print_len; i++)
-			printf("%c", pt->de.data[i]);
-		data_len -= print_len;
-		if(data_len ==0)
-		{
-			printf("\n");	
-			flag = 0;
-		}
-		int x = print_len;
-		memmove(buf, buf+x, len-x);
-		offset = len-x;
-
-	}
+	for(i = 0; i < pt->de.len; i++)
+		printf("%c", pt->de.data[i]);
+	printf("\n");
+	
+	memmove(buf, buf+data_len, len - data_len);
+	offset = len - data_len;
+	
 }
 void *rcv_thread(void *arg)
 {
@@ -96,7 +71,9 @@ void *rcv_thread(void *arg)
 			close(client_fd);
 			break;
 		}
+		offset += ret;
 		show(rcv_buf, ret);
+		//show_binary(rcv_buf, ret);
 	}
 }
 int main()
