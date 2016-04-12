@@ -30,4 +30,4 @@ spd_server:$(SPD_SERVER_OBJS)
 %.o:%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 clean:
-	rm -rf main $(OBJS) $(PRES_OBJS) pres_demo web_demo tcp_server tcp_client
+	rm -rf main $(OBJS) $(PRES_OBJS) pres_demo web_demo tcp_server tcp_client *.o spd_client spd_server

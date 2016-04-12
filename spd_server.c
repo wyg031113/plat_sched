@@ -3,7 +3,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdlib.h>
-
+#include <fcntl.h>
 #include "debug.h"
 #include "plat_sched.h"
 
@@ -27,14 +27,19 @@ int start_listen(void)
 	CHECK(listen(sockfd, 5));
 	return sockfd;
 }
-#define TASK_LEN 2048
+#define TASK_LEN 2048000
 char rcv_buf[TASK_LEN];
 int offset = 0;
 void show_binary(char *buf, int len)
 {
 	int i;
+	char c = 0;
 	for(i = 0; i < len; i++)
+	{
+
 		printf("%x ", (unsigned char)buf[i]);
+		CHECK2(buf[i] == c++);
+	}
 	printf("\n");
 }
 void show(char *buf, int len)
@@ -43,17 +48,30 @@ void show(char *buf, int len)
 	struct pres_task *pt = (struct pres_task*)buf;
 	int data_len = pt->de.len + sizeof(struct pres_task);
 	if(data_len > len)
+	{
+		DEBUG("data_len:%d real_len:%d\n", data_len, len);
 		return;
+
+	}
 
 		printf("session: data_len:%d flag:%d\n", pt->se.len, pt->se.flag);
 		printf("present: src_code:%x dst_code:%x len:%d\n", 
 			pt->pr.src_tel_code, pt->pr.dst_tel_code, pt->pr.len);
 		printf("detail:time:%x type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
 			pt->de.time, pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
-	for(i = 0; i < pt->de.len; i++)
-		printf("%c", pt->de.data[i]);
-	printf("\n");
-	
+	if(pt->de.type == D_TYPE_TEXT)
+		show_binary(pt->de.data, pt->de.len);
+	else
+	{
+		int fd = open("rcv.dat", O_CREAT|O_WRONLY|O_TRUNC, 0666);
+		/*for(i = 0; i < pt->de.len; i++)
+			printf("%c", pt->de.data[i]);
+		printf("\n");
+		*/
+		CHECK2(write(fd, pt->de.data, pt->de.len));
+		close(fd);
+		//exit(0);
+	}
 	memmove(buf, buf+data_len, len - data_len);
 	offset = len - data_len;
 	
@@ -65,15 +83,19 @@ void *rcv_thread(void *arg)
 	int i;
 	while(1)
 	{
+		DEBUG("rcv thread... offset=%d\n", offset);
 		int ret = recv(client_fd, rcv_buf+offset, TASK_LEN-offset, 0);
+		DEBUG("rcv awake!\n");
+
 		if(ret<=0)
 		{
 			close(client_fd);
 			break;
 		}
 		offset += ret;
-		show(rcv_buf, ret);
-		//show_binary(rcv_buf, ret);
+		show(rcv_buf, offset);
+	//	show_binary(rcv_buf, ret);
+	//	offset = 0;
 	}
 }
 int main()

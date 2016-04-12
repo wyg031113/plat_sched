@@ -14,7 +14,7 @@ struct pres_task *tsk_voice = (struct pres_task*)voice;
 void inc_task()
 {
 	int i;
-	int len = (rand()%(20))+1;
+	int len = (rand()%(2000-100))+1;
 	tsk_text->se.len = len+sizeof(struct pres)+sizeof(struct detail);
 	tsk_text->se.flag = S_DATA;
 	tsk_text->pr.dst_tel_code++;
@@ -30,7 +30,7 @@ void inc_task()
 	for(i = 0; i < len; i++)
 		tsk_text->de.data[i] = c++;
 	*tsk_voice = *tsk_text;
-	tsk_text->de.type = D_TYPE_VOICE;
+	tsk_voice->de.type = D_TYPE_VOICE;
 }
 int main()
 {
@@ -41,11 +41,25 @@ int main()
 		if(!is_busy())
 			inc_task();
 		if(!is_busy())
+		{
+			printf("last task status:%d\n", get_status());
 			submit_task((char*)tsk_text, tsk_text->se.len + sizeof(struct sess), NULL);
-		usleep(10000);
+		}
+		else
+		{
+			DEBUG("SUBMIT text failed!\n");
+		}
+		usleep(1000000);
 		if(!is_busy())
-			submit_task((char*)tsk_voice, sizeof(struct pres_task), "voice.dat");
-		usleep(10000);
+		{
+			printf("last task status:%d\n", get_status());
+			submit_task((char*)tsk_voice, sizeof(struct pres_task), "JE.txt");
+		}
+		else
+		{
+			DEBUG("SUBMIT voice failed\n");
+		}
+		usleep(1000000);
 	}
 	stop_tcp_client();
 	return 0;
