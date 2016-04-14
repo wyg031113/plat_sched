@@ -120,59 +120,56 @@ int rcv_data(int fd, void *data, int len)
 	}
 	return offset;
 }
-void *handle_client(void *arg)
+int handle_client(int client_fd)
 {
 
-	int len = 0;
+	static int len = 0;
 	int ret;
 	struct sched_pres *sp = (struct sched_pres *)tmp_rcv_buf;
-	int client_fd = (int)arg;
-	int last_success = 1;
+	static int last_success = 1;
 	int ret_status = PS_SUCCESS;
-	while(!stop_client)
-	{
-		if(!last_success)
-		{
-			if(cirbuf_get_free(&cb_rcv_ser) < len)
-			{
-				usleep(100000);
-				continue;
-			}
-			CHECK2(copy_cirbuf_from_user(&cb_rcv_ser, tmp_rcv_buf, len) == len);
-			DEBUG("PUT to circle %d bytes\n", len);
-			last_success = 1;
-		}
+	if(last_success)
+	{	
 		
 		//接收数据包头部
 		len = 0;
 		if((ret = rcv_data(client_fd, tmp_rcv_buf, sizeof(struct sched_pres))) != sizeof(struct sched_pres))
 		{
-			ret_status = PS_RECV_ERROR;
-			break;
+			return  PS_RECV_ERROR;
 		}
+
 
 		len += ret;	
 		DEBUG("RECV header:%d bytes, text len:%d bytes\n", ret, sp->text_len);
 		if(sp->text_len + sizeof(struct sched_pres) > MAX_SEG_SIZE)
 		{
 			INFO("tcp frame longer than tmp buffer!\n");
-			ret_status = PS_RECV_ERROR;
-			break;
+			return  PS_RECV_ERROR;
 		}
 		
 		if((ret = rcv_data(client_fd, tmp_rcv_buf+len, sp->text_len)) != sp->text_len)
 		{
 			DEBUG("tcp recv data failed!\n");
-			ret_status = PS_RECV_ERROR;
-			break;
+			return PS_RECV_ERROR;
 		}
 
 		len += ret;
 		last_success = 0;
 	}
-	DEBUG("handle client stoped!\n");
-	have_client = 0;
-	return (void*)ret_status;
+
+	if(!last_success)
+	{
+		if(cirbuf_get_free(&cb_rcv_ser) < len)
+		{
+			usleep(100000);
+			return PS_SUCCESS;
+		}
+		CHECK2(copy_cirbuf_from_user(&cb_rcv_ser, tmp_rcv_buf, len) == len);
+		DEBUG("PUT to circle %d bytes\n", len);
+		last_success = 1;
+	}
+	DEBUG("handle client stoped!");
+	return PS_SUCCESS;;
 }
 /*
  */
@@ -186,26 +183,33 @@ void pres_server_run(void)
 	int ret = 0;
 	pthread_t tid;
 	CHECK(start_listen()); 
-pthread_detach(pthread_self());	
 	while(!stop_server)
 	{
 		DEBUG("run.., len = %d\n", len);
 		tfd = accept(pres_serfd, NULL, NULL); //接收客户端连接，由于pers_serfd设置为非阻塞，会立即返回
 		if(tfd == -1 && errno == EAGAIN)
 		{
-			usleep(500000);
+			DEBUG("ACCEPT timed out!\n");
+			if(client_fd < 0)
+				usleep(500000);
+			else
+			{
+				DEBUG("Handle client!\n");
+				if(handle_client(client_fd) != PS_SUCCESS)
+				{
+					close(client_fd);
+					client_fd = -1;
+				}
+
+			}
 			continue;
 		}
 		CHECK(tfd);	
 		if(client_fd > 0)				//由于只有一个客户端，所有断定上个连接已经终止，关闭socket
 		{
 			DEBUG("NEW CLIENT!\n");
-			stop_client = 1;
 			close(client_fd);
-			int s;
-			int *status =&s;
 			client_fd = -1;
-			usleep(200000);
 			DEBUG("OLD THREAD STOPED!!!");
 		}
 
@@ -216,9 +220,8 @@ pthread_detach(pthread_self());
 		tv.tv_sec = RECV_TIME_OUT / 1000;
 		tv.tv_usec = RECV_TIME_OUT % 1000 * 1000;
 		CHECK(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));		
+		
 
-		stop_client = 0;
-		CHECK2(pthread_create(&tid, NULL,  handle_client, (void*)client_fd) == 0);	
 	}
 	if(client_fd >= 0)
 		close(client_fd);
