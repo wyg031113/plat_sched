@@ -20,31 +20,33 @@ enum task_status
 	TASK_FAIL
 };
 
-enum task_status status;
+enum task_status status;			//任务当前状态
 static char task_buf[MAX_TASK_LEN]; //提交任务保存到这里
 static int task_len;				//提交的任务长度
 static char file[FILE_NAME_LEN];	//提交的文件名
 static char file_data[MAX_FILE_DATA_LEN]; //读取文件临时缓冲
 static struct pres_task *ptsk = (struct pres_task*) task_buf; //task_buf结构体
-static char heart_beat_pkt[16];
-
-time_t last_send_heart;
+static char heart_beat_pkt[16];		//要发送的心跳包
+time_t last_send_heart;				//上一次发送心跳包的时间
 
 static char rcv_buf[MAX_TASK_LEN];
 
-static pthread_t tcp_client_read_tid;
-static pthread_t tcp_client_write_tid;
 static char app_ip[IPADDR_LEN]="127.0.0.1";
 static unsigned short app_port=5555;
 
-volatile int stop_tc = 0;
-volatile int be_busy = 0;
+volatile int stop_tc = 0;			//是否停止服务器
+volatile int be_busy = 0;			//是否正在发送新任务
 
-int app_fd = -1;
+int app_fd = -1;					//服务器socket
 struct sockaddr_in app_addr;
+
+//线程和对应TID
+static pthread_t tcp_client_read_tid;
+static pthread_t tcp_client_write_tid;
 static void *tcp_client_read_thread(void *arg);
 static void *tcp_client_write_thread(void *arg);
 //pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /*设置应用服务器ip和端口
  */
 void set_app_ip(const char *ipaddr, unsigned short port)
@@ -53,19 +55,33 @@ void set_app_ip(const char *ipaddr, unsigned short port)
 	app_port = port;
 	DEBUG("set app ip:%s port:%d\n", app_ip, app_port);
 }
+
+/*判断是否连接到服务器
+ * return 1-已经连接  0－未连接
+ */
 inline int is_connect(void)
 {
 	return connect_app() == 0;
 }
 
+/*判断当前有没有任务
+ * 返回：0－没有 1－有
+ */
 inline int is_busy(void)
 {
 	return be_busy;
 }
+
+/*获取当前任务状态
+ * return 返回状态码，参见enum task_status.
+ */
 inline enum task_status get_status(void)
 {
 	return status;
 }
+
+/*处理sig_pipe信号
+ */
 void sig_pipe(int sig)
 {
 	close(app_fd);
@@ -148,6 +164,8 @@ int tcp_client_rcv_data(void *data, int len)
 	return offset;
 }
 
+/*初始化要发送的心跳包
+ */
 void init_heart_beat_pkt(void)
 {
 
@@ -158,6 +176,8 @@ void init_heart_beat_pkt(void)
 	memset(ss->data, 0xff, ss->len);
 }
 
+/*初始化用到的数据结构
+ */
 void start_tcp_client(void)
 {
 	int ret = 0;
@@ -179,6 +199,8 @@ void start_tcp_client(void)
 	INFO("tcp client started!\n");
 }
 
+/*停止所有线程
+ */
 void stop_tcp_client(void)
 {
 	stop_tc = 1;
@@ -187,6 +209,8 @@ void stop_tcp_client(void)
 	close(app_fd);
 }
 
+/*从TCP服务器收包
+ */
 static void *tcp_client_read_thread(void *arg)
 {
 	char buf[128];
@@ -217,12 +241,14 @@ static void *tcp_client_read_thread(void *arg)
 }
 
 int do_task(void);
+/*发送心跳和提交过来的任务
+ */
 static void *tcp_client_write_thread(void *arg)
 {
 	int need_connect = 1;
 	while(!stop_tc)
 	{
-		if(need_connect)
+		if(need_connect) //没有连接到服务器，要重新连接
 		{
 			DEBUG("connecting....\n");
 			if(!connect_app())
@@ -230,7 +256,7 @@ static void *tcp_client_write_thread(void *arg)
 			else
 				need_connect = 0;
 		}
-		if(!be_busy)
+		if(!be_busy)	//没有任务，空闲，发心跳包
 		{
 			if(time(NULL) - last_send_heart > HEART_BEAT_INTV)
 			{
@@ -241,11 +267,14 @@ static void *tcp_client_write_thread(void *arg)
 			else
 				usleep(500000);
 		}
-		else
+		else		//有任务
 		{
 			DEBUG("Do task...\n");
-			if(do_task() != PS_SUCCESS)
+			if(do_task() == PS_SEND_ERROR)
+			{
 				need_connect = 1;
+				DEBUG("任务失败，需要重新连接服务器!\n");
+			}
 			be_busy = 0;
 			last_send_heart = time(NULL);
 		}
@@ -265,6 +294,7 @@ int do_task(void)
 		if(tcp_client_send_data(task_buf, task_len) != task_len)
 		{
 			status = TASK_FAIL;
+			return PS_SEND_ERROR;
 		}
 		status = TASK_SUCCESS;
 	}
@@ -294,7 +324,7 @@ int do_task(void)
 		{
 			INFO("send header failed!\n");
 			status = TASK_FAIL;
-			return PS_FAIL;
+			return PS_SEND_ERROR;
 		}
 
 		//发送文件
@@ -302,7 +332,7 @@ int do_task(void)
 		{
 			INFO("send  file failed!\n");
 			status = TASK_FAIL;
-			return PS_FAIL;
+			return PS_SEND_ERROR;
 		}		
 
 		status = TASK_SUCCESS;
