@@ -25,7 +25,7 @@ static volatile int stop_server = 0;
 pthread_t pres_server_tid;
 //有没有客户端边接
 static volatile int have_client = 0;
-
+static volatile int stop_client = 0;
 //注意，环形缓冲区大小必须是2^n大小
 #define RCV_CB_SER_BUF_SIZE 4096*32
 /*接收缓冲区定义
@@ -82,6 +82,98 @@ void *pres_server_thread(void *arg)
 	return NULL;
 }
 
+/*收数据从应用服务器。
+ * 接收够len字节才返回，除非要停止
+ * return 实际接收字节数
+ */
+int rcv_data(int fd, void *data, int len)
+{
+	int offset = 0;
+	int ret;
+	while(offset < len && !stop_server && !stop_client)
+	{
+		ret = recv(fd, data, len, 0);
+		if((ret == -1 && errno != EAGAIN) || ret == 0)
+		{
+			//raise(SIGPIPE);
+			break;
+		}
+		else if(ret == -1 && errno == EAGAIN)
+		{
+			//DEBUG("RCV_TIMED_OUT:cur time:%d  last time:%d\n", time(NULL), last_rcv_heart);
+			/*if(time(NULL) - last_rcv_heart > WEB_HEART_BEAT_TIMEDOUT)
+			{
+
+				//raise(SIGPIPE);
+				DEBUG("no heart beat.....\n");
+				break;
+			}
+			*/
+			DEBUG("Timed out!\n");
+
+		}
+		else
+		{
+			offset += ret;
+			//last_rcv_heart = time(NULL);
+		}
+	}
+	return offset;
+}
+void *handle_client(void *arg)
+{
+
+	int len = 0;
+	int ret;
+	struct sched_pres *sp = (struct sched_pres *)tmp_rcv_buf;
+	int client_fd = (int)arg;
+	int last_success = 1;
+	int ret_status = PS_SUCCESS;
+	while(!stop_client)
+	{
+		if(!last_success)
+		{
+			if(cirbuf_get_free(&cb_rcv_ser) < len)
+			{
+				usleep(100000);
+				continue;
+			}
+			CHECK2(copy_cirbuf_from_user(&cb_rcv_ser, tmp_rcv_buf, len) == len);
+			DEBUG("PUT to circle %d bytes\n", len);
+			last_success = 1;
+		}
+		
+		//接收数据包头部
+		len = 0;
+		if((ret = rcv_data(client_fd, tmp_rcv_buf, sizeof(struct sched_pres))) != sizeof(struct sched_pres))
+		{
+			ret_status = PS_RECV_ERROR;
+			break;
+		}
+
+		len += ret;	
+		DEBUG("RECV header:%d bytes, text len:%d bytes\n", ret, sp->text_len);
+		if(sp->text_len + sizeof(struct sched_pres) > MAX_SEG_SIZE)
+		{
+			INFO("tcp frame longer than tmp buffer!\n");
+			ret_status = PS_RECV_ERROR;
+			break;
+		}
+		
+		if((ret = rcv_data(client_fd, tmp_rcv_buf+len, sp->text_len)) != sp->text_len)
+		{
+			DEBUG("tcp recv data failed!\n");
+			ret_status = PS_RECV_ERROR;
+			break;
+		}
+
+		len += ret;
+		last_success = 0;
+	}
+	DEBUG("handle client stoped!\n");
+	have_client = 0;
+	return (void*)ret_status;
+}
 /*
  */
 void pres_server_run(void)
@@ -92,149 +184,46 @@ void pres_server_run(void)
 	int last_success = 1; 
 	int len = 0;
 	int ret = 0;
-
-	CHECK(start_listen()); //启动主线程
-
+	pthread_t tid;
+	CHECK(start_listen()); 
+pthread_detach(pthread_self());	
 	while(!stop_server)
 	{
 		DEBUG("run.., len = %d\n", len);
 		tfd = accept(pres_serfd, NULL, NULL); //接收客户端连接，由于pers_serfd设置为非阻塞，会立即返回
-		if(tfd < 0)
+		if(tfd == -1 && errno == EAGAIN)
 		{
-			if(errno == EAGAIN)				//没有新客户端连接
-			{
-				DEBUG("Accept again\n");
-				if(client_fd == -1)         //没有旧客户端要处理，sleep
-					usleep(SLEEP_TIME);
-			}
-			else
-				CHECK(tfd);
+			usleep(500000);
+			continue;
 		}
-		else								//有新连接到来
+		CHECK(tfd);	
+		if(client_fd > 0)				//由于只有一个客户端，所有断定上个连接已经终止，关闭socket
 		{
-			if(client_fd > 0)				//由于只有一个客户端，所有断定上个连接已经终止，关闭socket
-			{
-				close(client_fd);
-				client_fd = -1;
-			}
-
-			DEBUG("accept a new client\n");
-			client_fd = tfd;
-			have_client = 1;
-			//设置超时
-			tv.tv_sec = RECV_TIME_OUT / 1000;
-			tv.tv_usec = RECV_TIME_OUT % 1000 * 1000;
-			CHECK(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));	
+			DEBUG("NEW CLIENT!\n");
+			stop_client = 1;
+			close(client_fd);
+			int s;
+			int *status =&s;
+			client_fd = -1;
+			usleep(200000);
+			DEBUG("OLD THREAD STOPED!!!");
 		}
 
-		if(client_fd > 0 && last_success) //有客户端，且上一次接收是成功的
-		{
-			ret = recv(client_fd, tmp_rcv_buf+len, MAX_SEG_SIZE-len, 0); //继续接收数据
-			if(ret == 0)				  //客户端断开连接
-			{
-				close(client_fd);
-				client_fd = -1;
-				have_client = 0;
-				len = 0;
-			}
-			else if(ret <0)				 
-			{
-				if(errno == EAGAIN)		//客户端没有数据，接收超时
-				{
-					DEBUG("server recv timed out!\n");
-				}
-				else				   //客户端出现异常
-				{
-					close(client_fd);
-					client_fd = -1;
-					have_client = 0;
-					len = 0;
-				}
-			}
-			else
-			{
-				struct sched_pres *sp = (struct sched_pres*)tmp_rcv_buf;
-				len += ret;
-				if(len < 23)
-					continue;
-				if(sp->pkt_len < 23 || sp->pkt_len != sp->text_len + 23 || sp->pkt_len > RCV_CB_SER_BUF_SIZE )
-				{
-					len = 0;
-					close(client_fd);
-					client_fd = -1;
-					INFO("Recv bad packet! just close connection!\n");
-					continue;
-				}
-				CHECK2(sp->pkt_len <= MAX_SEG_SIZE);
-				if(len < sp->pkt_len)
-					continue;
-				DEBUG("Recv new packet!\n");
-				int i;
-			uint8 c = 0;
-			for(i = 0; i < sp->text_len; i++)
-			{
-				if(sp->data[i] != c)
-				{
-					DEBUG("i = %d sp->data[i]==%d  c==%d\n", i, sp->data[i], c);
-					CHECK2(sp->data[i]==c);
-				}
-				c++;
-			}
+		DEBUG("accept a new client\n");
+		client_fd = tfd;
+		have_client = 1;
+		//设置超时
+		tv.tv_sec = RECV_TIME_OUT / 1000;
+		tv.tv_usec = RECV_TIME_OUT % 1000 * 1000;
+		CHECK(setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));		
 
-				
-			}	
-		}
-
-		//放到环形缓冲区
-		if(len > 0)		
-		{
-			ret = check_add_cb(tmp_rcv_buf, len);
-			last_success = 1;
-
-			/*如果可以放到一个完整的包则放入，否则一个字节也不放入，保证完整
-			 */
-			if(ret <=0)			  //由于缓冲区满，可能不能完全放入，这时应该等待
-			{
-				last_success = 0; //用户取走缓冲区中的内容，并不从socket中读数据				
-				DEBUG("circle buf full!!\n");
-			}
-			else
-			{
-					len -= ret;
-			}
-			if(!last_success)    //依然失败，睡眠等待
-			{
-				usleep(10000);
-			}
-		}
-
+		stop_client = 0;
+		CHECK2(pthread_create(&tid, NULL,  handle_client, (void*)client_fd) == 0);	
 	}
-	if(client_fd > 0)
+	if(client_fd >= 0)
 		close(client_fd);
 }
 
-int check_add_cb(char *buf, int len)
-{
-	DEBUG("Add to circle buffer\n");
-	struct sched_pres *sp = (struct sched_pres*)buf;
-	int pkt_len = 0;
-	if(len<23 || sp->pkt_len > len)
-	{
-		DEBUG("sp->pkt_len > len\n");
-		return 0;
-
-	}
-	CHECK2(sp->pkt_len <= RCV_CB_SER_BUF_SIZE);
-	if(sp->pkt_len > cirbuf_get_free(&cb_rcv_ser))
-	{
-		DEBUG("circle buff full...\n");
-		return 0;
-	}
-	pkt_len = sp->pkt_len;
-	CHECK2(copy_cirbuf_from_user(&cb_rcv_ser, buf, pkt_len) == pkt_len);
-	memmove(buf, buf + pkt_len, len - pkt_len);
-	return pkt_len;
-}
 /////////////////////USER INTERFACE////////////////////////////////////
 /*判断有没有客户端连接
  * return: 1－有客户端 0－无客户端
@@ -274,6 +263,8 @@ int get_packet(char *buf, int len)
 	if(pkt_len > len)
 		return EUSER_BUFF_TOO_SHORT;
 	CHECK2(copy_cirbuf_to_user(&cb_rcv_ser, buf, pkt_len) == pkt_len);
+	DEBUG("Copy to user:%d bytes\n", pkt_len);
+	ASSERT(pkt_len == sp->text_len + sizeof(struct sched_pres));
 	return pkt_len;
 }
 

@@ -41,10 +41,11 @@ void inc_sp(void)
 int main()
 {
 	connect_server();
-	int cnt = 100000;
+	int cnt = 10000;
 	int last_success = 1;
 	int send_offset = 0;
 	int ret;
+	sleep(2);
 	while(cnt--)
 	{
 		if(last_success)
@@ -53,14 +54,17 @@ int main()
 		send_offset += ret;
 		if(send_offset == sp->pkt_len)
 		{
+			DEBUG("Send no:%d len=%d\n", sp->no, send_offset);
 			send_offset = 0;
 			last_success = 1;
 		}
 		else
+		{
 			last_success = 0;
+		}
 		
 		DEBUG("Run cnt=%d ...\n", cnt);
-		//usleep(1000000);
+		//usleep(10000);
 	}
 	return 0;
 }

@@ -17,6 +17,7 @@ typedef unsigned int	uint32;
 #define EBUFF_FULL	-3
 #define EUSER_BUFF_TOO_SHORT -4
 #define PS_SEND_ERROR -5
+#define PS_RECV_ERROR -6
 
 /*----------------------------------------------------
  *平调系统 WEB与区长台语音实时下发/上传(UDP协议)

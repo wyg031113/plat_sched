@@ -18,7 +18,7 @@ int main()
 	start_pres_server();
 	struct sched_pres *sp = (struct sched_pres*)buf;
 	uint8 no = 0;
-	
+		
 	while(1)
 	{
 
@@ -39,7 +39,8 @@ int main()
 			int i;
 			uint8 c = 0;
 			no++;
-			CHECK2(no==sp->no);
+			DEBUG("should no:%d  RECV_NO:%d\n", no, sp->no);
+	//		CHECK2(no==sp->no);
 			for(i = 0; i < sp->text_len; i++)
 			{
 				if(sp->data[i] != c)
