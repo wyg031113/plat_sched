@@ -11,6 +11,11 @@
 #define DEFUALT_TCP_RCV_TIMEOUT 100000
 #define MAX_TASK_LEN 2048
 #define MAX_FILE_DATA_LEN 1024
+
+#define RCV_TCP_BUF_SIZE 4096		//接收缓环形冲区大小,必须是２^n
+static char rcv_buf_tcp[RCV_TCP_BUF_SIZE];
+struct circle_buffer cb_rcv_tcp;
+
 enum task_status
 {
 	TASK_NEW,
@@ -28,8 +33,10 @@ static char file_data[MAX_FILE_DATA_LEN]; //读取文件临时缓冲
 static struct pres_task *ptsk = (struct pres_task*) task_buf; //task_buf结构体
 static char heart_beat_pkt[16];		//要发送的心跳包
 time_t last_send_heart;				//上一次发送心跳包的时间
+time_t last_rcv_heart;				//上一次发送心跳包的时间
 
 static char rcv_buf[MAX_TASK_LEN];
+static char tmp_rcv_buf[MAX_TASK_LEN];
 
 static char app_ip[IPADDR_LEN]="127.0.0.1";
 static unsigned short app_port=5555;
@@ -72,6 +79,12 @@ inline int is_busy(void)
 	return be_busy;
 }
 
+/*判断有没有收到包
+ */
+inline int have_pkt(void)
+{
+	return !cirbuf_empty(&cb_rcv_tcp);
+}
 /*获取当前任务状态
  * return 返回状态码，参见enum task_status.
  */
@@ -154,11 +167,23 @@ int tcp_client_rcv_data(void *data, int len)
 		ret = recv(app_fd, data, len, 0);
 		if((ret == -1 && errno != EAGAIN) || ret == 0)
 		{
+			raise(SIGPIPE);
 			break;
+		}
+		else if(ret == -1 && errno == EAGAIN)
+		{
+			if(time(NULL) - last_rcv_heart > WEB_HEART_BEAT_TIMEDOUT)
+			{
+
+				raise(SIGPIPE);
+				break;
+			}
+
 		}
 		else
 		{
 			offset += ret;
+			last_rcv_heart = time(NULL);
 		}
 	}
 	return offset;
@@ -194,6 +219,7 @@ void start_tcp_client(void)
 	
 	init_heart_beat_pkt();
 
+	cirbuf_init(&cb_rcv_tcp, rcv_buf_tcp, RCV_TCP_BUF_SIZE);
 	CHECK2((ret = pthread_create(&tcp_client_read_tid, NULL, tcp_client_read_thread, NULL)) == 0);
 	CHECK2((ret = pthread_create(&tcp_client_write_tid, NULL, tcp_client_write_thread, NULL)) == 0);
 	INFO("tcp client started!\n");
@@ -216,6 +242,10 @@ static void *tcp_client_read_thread(void *arg)
 	char buf[128];
 	int ret;
 	int need_connect = 1;
+	int offset = 0;;
+	int last_success = 1;
+	struct sess *ss = (struct sess*)tmp_rcv_buf;
+	struct pres_task *pt = (struct pres_task*)tmp_rcv_buf;
 	while(!stop_tc)
 	{
 		if(need_connect)
@@ -225,16 +255,58 @@ static void *tcp_client_read_thread(void *arg)
 			else
 				need_connect = 0;
 		}
-		ret = recv(app_fd, buf, 128, 0);
-		if(ret <= 0)
+
+		if(!last_success)
+		{
+			if(cirbuf_get_free(&cb_rcv_tcp) < offset)
+			{
+				sleep(100000);
+				continue;
+			}
+			CHECK2(copy_cirbuf_from_user(&cb_rcv_tcp, tmp_rcv_buf, offset));
+			last_success = 0;
+		}
+		//接收头
+		offset = 0;
+		ret = tcp_client_rcv_data(tmp_rcv_buf, sizeof(struct sess));
+		if(ret != sizeof(struct sess))
 		{
 			need_connect = 1;
+			raise(SIGPIPE);
+			continue;
 		}
 		else
-		{
-			DEBUG("Recv %d bytes\n", ret);
-		}
+			offset += ret;
 
+		if(ss->flag == S_HEART_BEAT) //心跳包
+		{
+			last_rcv_heart = time(NULL);
+			if(tcp_client_rcv_data(tmp_rcv_buf+offset, 11) != 11)
+			{
+				need_connect = 1;
+				raise(SIGPIPE);
+				continue;
+			}
+		}
+		else						 //普通数据包
+		{
+			if(ss->len + sizeof(struct sess) > MAX_TASK_LEN)
+			{
+				INFO("Recv a too long packet: len = %d\n", ss->len);
+				raise(SIGPIPE);
+				need_connect = 1;
+				continue;
+			}
+
+			if(tcp_client_rcv_data(tmp_rcv_buf + offset, ss->len) != ss->len)
+			{
+				raise(SIGPIPE);
+				need_connect = 1;
+				continue;
+			}
+			last_success = 0;
+
+		}	
 	}
 	
 	DEBUG("TCP client read stopped!\n");
@@ -569,4 +641,27 @@ int submit_task(char *task, int len, const char *file_name)
 	task_len = len;
 	be_busy = 1;
 	return PS_SUCCESS;
+}
+
+/*获取一个帧
+ * return: 成功返帧长度 失败返回原因
+ */
+int get_frame(char *buf, int len)
+{
+	struct pres_task *pt = (struct pres_task *) buf;
+	int dlen = 0;
+	if(cirbuf_empty(&cb_rcv_tcp))
+	{
+		return EBUFF_EMPTY;
+	}
+	
+	if(len < sizeof(struct sess))
+		return EUSER_BUFF_TOO_SHORT;
+	CHECK2(copy_cirbuf_to_user_flag(&cb_rcv_tcp, buf, sizeof(struct sess), 0) == sizeof(struct sess));
+	
+	dlen = pt->se.len + sizeof(struct sess);
+	if(dlen > len)
+		return EUSER_BUFF_TOO_SHORT;
+	CHECK2(copy_cirbuf_to_user(&cb_rcv_tcp, buf, dlen) == dlen);
+	return dlen;
 }

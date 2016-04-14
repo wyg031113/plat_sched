@@ -180,6 +180,14 @@ void set_app_ip(const char *ipaddr, unsigned short port);
 inline int is_connected(void);
 inline int is_busy(void);
 int submit_task(char *task, int len, const char *file_name);
+/*判断有没有收到包
+ */
+inline int have_pkt(void);
+/*获取一个帧
+ * return: 成功返帧长度 失败返回原因
+ */
+int get_frame(char *buf, int len);
+
 
 
 void set_pre_serip_port(const char *ipaddr, unsigned short p);
