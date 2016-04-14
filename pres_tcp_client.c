@@ -106,7 +106,8 @@ void sig_pipe(int sig)
  */
 int connect_app(void)
 {
-	int ret = 0;	
+	int ret = 0;
+	struct timeval tv;	
 	while(!stop_tc)
 	{
 		ret =  connect(app_fd, (struct sockaddr*)&app_addr, sizeof(struct sockaddr));
@@ -123,6 +124,9 @@ int connect_app(void)
 		else
 			break;
 	}
+	tv.tv_sec = 0;
+	tv.tv_usec = 500*1000;
+	CHECK(setsockopt(app_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)));	
 	//setnonblocking(app_fd);
 	return ret == 0;
 }
@@ -172,10 +176,12 @@ int tcp_client_rcv_data(void *data, int len)
 		}
 		else if(ret == -1 && errno == EAGAIN)
 		{
+			DEBUG("RCV_TIMED_OUT:cur time:%d  last time:%d\n", time(NULL), last_rcv_heart);
 			if(time(NULL) - last_rcv_heart > WEB_HEART_BEAT_TIMEDOUT)
 			{
 
 				raise(SIGPIPE);
+				DEBUG("no heart beat.....\n");
 				break;
 			}
 
@@ -264,7 +270,8 @@ static void *tcp_client_read_thread(void *arg)
 				continue;
 			}
 			CHECK2(copy_cirbuf_from_user(&cb_rcv_tcp, tmp_rcv_buf, offset));
-			last_success = 0;
+			DEBUG("PUT a frame into circle buffer:copied_len=%d pkt_len=%d\n", offset, ss->len + sizeof(struct sess));
+			last_success = 1;
 		}
 		//接收头
 		offset = 0;
@@ -280,13 +287,14 @@ static void *tcp_client_read_thread(void *arg)
 
 		if(ss->flag == S_HEART_BEAT) //心跳包
 		{
-			last_rcv_heart = time(NULL);
 			if(tcp_client_rcv_data(tmp_rcv_buf+offset, 11) != 11)
 			{
 				need_connect = 1;
 				raise(SIGPIPE);
 				continue;
 			}
+			last_rcv_heart = time(NULL);
+			DEBUG("recv heart beat!\n");
 		}
 		else						 //普通数据包
 		{
@@ -304,6 +312,7 @@ static void *tcp_client_read_thread(void *arg)
 				need_connect = 1;
 				continue;
 			}
+			offset += ss->len;
 			last_success = 0;
 
 		}	

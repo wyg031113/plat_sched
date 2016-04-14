@@ -18,8 +18,10 @@ int main()
 	start_pres_server();
 	struct sched_pres *sp = (struct sched_pres*)buf;
 	uint8 no = 0;
+	
 	while(1)
 	{
+
 		if(!is_client_connected() && !have_packet())
 		{
 			no = 0;

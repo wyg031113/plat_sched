@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string.h>
@@ -7,6 +8,38 @@
 #include "debug.h"
 #include "plat_sched.h"
 
+#define TASK_LEN 2048000
+
+int npkt_send, npkt_recv;
+
+char text[TASK_LEN];
+char voice[TASK_LEN];
+struct pres_task *tsk_text = (struct pres_task*)text;
+struct pres_task *tsk_voice = (struct pres_task*)voice;
+void inc_task()
+{
+	int i;
+	int len = (rand()%(2000-100))+1;
+	tsk_text->se.len = len+sizeof(struct pres)+sizeof(struct detail);
+	tsk_text->se.flag = S_DATA;
+	tsk_text->pr.dst_tel_code++;
+	tsk_text->pr.src_tel_code++;
+	tsk_text->pr.len = len + sizeof(struct detail);
+	tsk_text->de.time = time(NULL);
+	tsk_text->de.type = D_TYPE_TEXT;
+	tsk_text->de.sub_type++;
+	tsk_text->de.speaker++;
+	tsk_text->de.connector++;
+	tsk_text->de.len = len;
+	uint8 c = 0;
+	for(i = 0; i < len; i++)
+		tsk_text->de.data[i] = c++;
+	*tsk_voice = *tsk_text;
+	tsk_voice->de.type = D_TYPE_VOICE;
+}
+
+time_t last_send_heart;
+char heart_beat_packet[16] = { 0xb, 0x00, 0x00, 0x00, 0x0f, 0xFF, 0xFF, 0xFF, 0XFF, 0xFF,0xFF, 0xFF, 0xFF,0xFF, 0xFF,0xFF};
 /*开始监听
  */
 int start_listen(void)
@@ -27,7 +60,6 @@ int start_listen(void)
 	CHECK(listen(sockfd, 5));
 	return sockfd;
 }
-#define TASK_LEN 2048000
 char rcv_buf[TASK_LEN];
 int offset = 0;
 void show_binary(char *buf, int len)
@@ -68,7 +100,7 @@ void show(char *buf, int len)
 		printf("present: src_code:%x dst_code:%x len:%d\n", 
 			pt->pr.src_tel_code, pt->pr.dst_tel_code, pt->pr.len);
 		printf("detail:time:%s type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
-			ctime(&pt->de.time), pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
+			ctime((time_t*)&pt->de.time), pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
 	if(pt->de.type == D_TYPE_TEXT)
 		show_binary(pt->de.data, pt->de.len);
 	else
@@ -86,6 +118,52 @@ void show(char *buf, int len)
 	offset = len - data_len;
 	
 }
+
+void *snd_thread(void *arg)
+{
+	int client_fd = (int)arg;
+	int ret;
+	while(1)
+	{
+		DEBUG("npkt_send=%d\n", npkt_send);
+		if(time(NULL) - last_send_heart > 1)
+		{
+
+			if(send(client_fd, heart_beat_packet, sizeof(heart_beat_packet), 0) != sizeof(heart_beat_packet))
+			{
+				DEBUG("send heart beat failed!\n");
+				break;
+			}
+			DEBUG("Send a heart beat packet!\n");
+			last_send_heart = time(NULL);
+		}
+		else
+			usleep(500000);
+
+		inc_task();
+		int len = tsk_text->se.len + sizeof(struct sess);
+		while(len>0)
+		{
+			if( (ret = send(client_fd, text, len, 0)) <= 0)
+			{
+				close(client_fd);
+
+				return NULL;
+			}
+			else
+			{
+
+				len -= ret;
+			}
+			
+		}
+			npkt_send++;
+			DEBUG("Send a text packet!\n");
+			sleep(20);
+			DEBUG("WAKE UP!!!!!!!!!!\n");
+	}
+	close(client_fd);
+}
 void *rcv_thread(void *arg)
 {
 	pthread_detach(pthread_self());
@@ -93,7 +171,7 @@ void *rcv_thread(void *arg)
 	int i;
 	while(1)
 	{
-		DEBUG("rcv thread... offset=%d\n", offset);
+		DEBUG("rcv thread... offset=%d npkt_recv=%d\n", offset, npkt_recv);
 		int ret = recv(client_fd, rcv_buf+offset, TASK_LEN-offset, 0);
 		DEBUG("rcv awake!\n");
 
@@ -102,11 +180,14 @@ void *rcv_thread(void *arg)
 			close(client_fd);
 			break;
 		}
+		npkt_recv++;
 		offset += ret;
 		show(rcv_buf, offset);
 	//	show_binary(rcv_buf, ret);
 	//	offset = 0;
+		sleep(10);
 	}
+	close(client_fd);
 }
 int main()
 {
@@ -122,6 +203,7 @@ int main()
 		{
 			DEBUG("a client!\n");
 			pthread_create(&tid, NULL, rcv_thread, (void*)client_fd);
+			pthread_create(&tid, NULL, snd_thread, (void*)client_fd);
 		}
 	}
 	return 0;

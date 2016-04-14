@@ -2,11 +2,76 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 #include "debug.h"
 #include "plat_sched.h"
 
-#define TASK_LEN 2048
+#define TASK_LEN 20480000
+int offset = 0;
+char rcv_buf[TASK_LEN];
+int npkt_send = 0;
+int npkt_recv = 0;
+void show_binary(char *buf, int len)
+{
+	int i;
+	char c = 0;
+	for(i = 0; i < len; i++)
+	{
+
+		printf("%x ", (unsigned char)buf[i]);
+		CHECK2(buf[i] == c++);
+	}
+	printf("\n");
+}
+
+int show(char *buf, int len)
+{
+	int i;
+	struct pres_task *pt = (struct pres_task*)buf;
+	if(len >=16 && pt->se.flag == S_HEART_BEAT)
+	{
+		DEBUG("a heart beat!\n");
+		CHECK2(pt->se.len == 11);
+		for(i = 0; i < pt->se.len; i++)
+			CHECK2(pt->se.data[i] == 0xff);
+		memmove(buf, buf+16, len - 16);
+		offset = len - 16;
+		return 0;
+
+	}
+	int data_len = pt->de.len + sizeof(struct pres_task);
+	if(data_len > len)
+	{
+		DEBUG("data_len:%d real_len:%d\n", data_len, len);
+		return -1;
+	}
+
+		printf("session: data_len:%d flag:%d\n", pt->se.len, pt->se.flag);
+		printf("present: src_code:%x dst_code:%x len:%d\n", 
+			pt->pr.src_tel_code, pt->pr.dst_tel_code, pt->pr.len);
+		printf("detail:time:%s type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
+			ctime(&pt->de.time), pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
+	if(pt->de.type == D_TYPE_TEXT)
+		show_binary(pt->de.data, pt->de.len);
+	else
+	{
+		int fd = open("rcv.dat", O_CREAT|O_WRONLY|O_TRUNC, 0666);
+		/*for(i = 0; i < pt->de.len; i++)
+			printf("%c", pt->de.data[i]);
+		printf("\n");
+		*/
+		CHECK2(write(fd, pt->de.data, pt->de.len));
+		close(fd);
+		//exit(0);
+	}
+	memmove(buf, buf+data_len, len - data_len);
+	offset = len - data_len;
+	return 0;	
+}
+
+
+
 char text[TASK_LEN];
 char voice[TASK_LEN];
 struct pres_task *tsk_text = (struct pres_task*)text;
@@ -39,13 +104,33 @@ int main()
 	int cnt = TEST;
 	while(cnt--)
 	{
+		DEBUG("npkt_send:%d npkt_recv:%d\n", npkt_send, npkt_recv);
 		sleep(5);
+		if(have_pkt())
+		{
+			int len = get_frame(rcv_buf, TASK_LEN);
+			if(len < 0)
+			{
+				DEBUG("get frame error!\n");
+			}
+			else
+			{
+				DEBUG("get a frame!!\n");
+				CHECK2(!show(rcv_buf, len));
+				npkt_recv ++;
+			}
+		}
+		else
+		{
+			DEBUG("No pkt!\n");
+		}
 		if(!is_busy())
 			inc_task();
 		if(!is_busy())
 		{
 			printf("last task status:%d\n", get_status());
 			submit_task((char*)tsk_text, tsk_text->se.len + sizeof(struct sess), NULL);
+			npkt_send++;
 		}
 		else
 		{
@@ -56,6 +141,7 @@ int main()
 		{
 			printf("last task status:%d\n", get_status());
 			submit_task((char*)tsk_voice, sizeof(struct pres_task), "JE.txt");
+			npkt_send++;
 		}
 		else
 		{
