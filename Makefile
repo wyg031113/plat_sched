@@ -1,4 +1,5 @@
 all:main pres_demo web_demo tcp_server tcp_client spd_client spd_server
+#CC=arm-linux-gcc
 CC=gcc
 CFLAGS=-g3
 LIBS=-lpthread
