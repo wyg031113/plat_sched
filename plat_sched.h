@@ -9,6 +9,7 @@ typedef unsigned int	uint32;
 #define IPADDR_LEN 16
 
 #define WEB_HEART_BEAT_TIMEDOUT 5
+#define HEART_BEAT_INTV 1
 /*返回值 和 错误码定义*/
 #define PS_SUCCESS	0
 #define PS_FAIL		-1

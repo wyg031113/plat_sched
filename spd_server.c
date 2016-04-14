@@ -46,19 +46,29 @@ void show(char *buf, int len)
 {
 	int i;
 	struct pres_task *pt = (struct pres_task*)buf;
+	if(len >=16 && pt->se.flag == S_HEART_BEAT)
+	{
+		DEBUG("a heart beat!\n");
+		CHECK2(pt->se.len == 11);
+		for(i = 0; i < pt->se.len; i++)
+			CHECK2(pt->se.data[i] == 0xff);
+		memmove(buf, buf+16, len - 16);
+		offset = len - 16;
+		return;
+
+	}
 	int data_len = pt->de.len + sizeof(struct pres_task);
 	if(data_len > len)
 	{
 		DEBUG("data_len:%d real_len:%d\n", data_len, len);
 		return;
-
 	}
 
 		printf("session: data_len:%d flag:%d\n", pt->se.len, pt->se.flag);
 		printf("present: src_code:%x dst_code:%x len:%d\n", 
 			pt->pr.src_tel_code, pt->pr.dst_tel_code, pt->pr.len);
-		printf("detail:time:%x type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
-			pt->de.time, pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
+		printf("detail:time:%s type:%x sub_type:%x speaker:%x connector:%x len:%d\n",
+			ctime(&pt->de.time), pt->de.type, pt->de.sub_type, pt->de.speaker, pt->de.connector, pt->de.len);
 	if(pt->de.type == D_TYPE_TEXT)
 		show_binary(pt->de.data, pt->de.len);
 	else

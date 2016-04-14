@@ -26,7 +26,9 @@ static int task_len;				//提交的任务长度
 static char file[FILE_NAME_LEN];	//提交的文件名
 static char file_data[MAX_FILE_DATA_LEN]; //读取文件临时缓冲
 static struct pres_task *ptsk = (struct pres_task*) task_buf; //task_buf结构体
+static char heart_beat_pkt[16];
 
+time_t last_send_heart;
 
 static char rcv_buf[MAX_TASK_LEN];
 
@@ -146,14 +148,19 @@ int tcp_client_rcv_data(void *data, int len)
 	return offset;
 }
 
-/*启动接收和发送线程
- */
+void init_heart_beat_pkt(void)
+{
 
+	struct sess *ss = (struct sess*)heart_beat_pkt;
+	//初始化心跳包
+	ss->len = 11;
+	ss->flag = S_HEART_BEAT;
+	memset(ss->data, 0xff, ss->len);
+}
 
 void start_tcp_client(void)
 {
 	int ret = 0;
-
 	app_fd = -1;
 	stop_tc = 0;
 
@@ -164,6 +171,8 @@ void start_tcp_client(void)
 	app_addr.sin_family = AF_INET;
 	app_addr.sin_addr.s_addr = inet_addr(app_ip);
 	app_addr.sin_port = htons(app_port);
+	
+	init_heart_beat_pkt();
 
 	CHECK2((ret = pthread_create(&tcp_client_read_tid, NULL, tcp_client_read_thread, NULL)) == 0);
 	CHECK2((ret = pthread_create(&tcp_client_write_tid, NULL, tcp_client_write_thread, NULL)) == 0);
@@ -196,8 +205,6 @@ static void *tcp_client_read_thread(void *arg)
 		if(ret <= 0)
 		{
 			need_connect = 1;
-			raise(SIGPIPE);
-			DEBUG("RECV failed!\n");
 		}
 		else
 		{
@@ -224,13 +231,23 @@ static void *tcp_client_write_thread(void *arg)
 				need_connect = 0;
 		}
 		if(!be_busy)
-			usleep(500000);
+		{
+			if(time(NULL) - last_send_heart > HEART_BEAT_INTV)
+			{
+				if(tcp_client_send_data(heart_beat_pkt, sizeof(heart_beat_pkt)) != sizeof(heart_beat_pkt))
+					need_connect = 1;
+				last_send_heart = time(NULL);
+			}
+			else
+				usleep(500000);
+		}
 		else
 		{
 			DEBUG("Do task...\n");
-			if(do_task() == PS_SEND_ERROR)
+			if(do_task() != PS_SUCCESS)
 				need_connect = 1;
 			be_busy = 0;
+			last_send_heart = time(NULL);
 		}
 	}
 	DEBUG("TCP client write stopped!\n");
@@ -248,7 +265,6 @@ int do_task(void)
 		if(tcp_client_send_data(task_buf, task_len) != task_len)
 		{
 			status = TASK_FAIL;
-			return PS_SEND_ERROR;
 		}
 		status = TASK_SUCCESS;
 	}
@@ -278,7 +294,7 @@ int do_task(void)
 		{
 			INFO("send header failed!\n");
 			status = TASK_FAIL;
-			return PS_SEND_ERROR;
+			return PS_FAIL;
 		}
 
 		//发送文件
@@ -286,7 +302,7 @@ int do_task(void)
 		{
 			INFO("send  file failed!\n");
 			status = TASK_FAIL;
-			return PS_SEND_ERROR;
+			return PS_FAIL;
 		}		
 
 		status = TASK_SUCCESS;
@@ -326,7 +342,181 @@ int send_file(const char *file_name, int len)
 	return tlen - len;
 }
 
+/*
+#define FILE_DATA_LEN 1024
+static int send_packet_in_buffer(void)
+{
+	DEBUG("Send user data\n");
+	static int send_offset = 0;
+	static int len = 0;
+	static int file_fd = -1; //注意意外退出时关闭文件
+	static struct stat st;
+	static int file_len = 0;
+	static char file_data[FILE_DATA_LEN];
+	static char file_data_len = 0;
+	if(!be_busy)
+		return SEND_IDLE;
+	switch(status)
+	{
+		case NEW_TASK:		//新任务
+			DEBUG("NEW_TASK\n");
+			if(ptsk->de.type == D_TYPE_TEXT)//普通文件任务，不用发送文件
+			{
+				status = SENDING_HEADER;
+				len = task_len;
+				send_offset = 0;
+				return SEND_BUSY;
+			}
+			else if(ptsk->de.type == D_TYPE_VOICE) //语音任务，要发送语音文件
+			{
+				//准备文件
+				if(access(file, R_OK)!=0)
+				{
+					INFO("file:%s can't read! errno=%s\n", strerror(errno));
+					status = SENDING_FINISHED;
+					return SEND_BUSY;
+				}
+				if(stat(file, &st) !=0)
+				{
+					INFO("file:%s can't get stat! errno=%s\n", strerror(errno));
+					status = SENDING_FINISHED;
+					return SEND_BUSY;
+				}
+				file_fd = open(file, O_RDONLY);
+				if(file_fd < 0)
+				{
+					INFO("Can't open file %s\n", file);
+					status = SENDING_FINISHED;
+					return SEND_BUSY;
+				}
 
+				//计算帧头
+				ptsk->se.len = sizeof(struct pres) + sizeof(struct detail) + st.st_size;
+				ptsk->pr.len = sizeof(struct detail) + st.st_size;
+				ptsk->de.len = st.st_size;
+
+				//语音文件信息
+				file_len = st.st_size;
+				send_offset = 0;
+				len = sizeof(struct sess) + sizeof(struct pres) + sizeof(struct detail);
+				status = SENDING_VOICE;
+			}
+			break;
+
+		case SENDING_HEADER:
+			DEBUG("SENDING HEADER\n");
+		case SENDING_VOICE://这里只发送帧头
+			DEBUG("SENDING_VOICE\n");
+			if(len == 0) //帧头发送完毕
+			{
+				if(status == SENDING_VOICE)
+				{
+					status = SENDING_FILE; //语音
+					send_offset = 0;
+					len = file_len;
+					file_data_len = 0;
+				}
+				else //如果不是发语音，则已经完成了任务
+				{
+					status = SENDING_FINISHED;
+				}
+				return SEND_BUSY;
+			}
+			else //发送帧头
+			{
+				int ret = tcp_client_send_data(task_buf + send_offset, len);
+				if(ret == -1)
+				{
+					status = SENDING_FINISHED;
+					if(file_fd != -1 && status == SENDING_VOICE)
+					{
+						close(file_fd);
+						file_fd = -1;
+					}
+					return SEND_BUSY;
+				}
+				len -= ret;
+				send_offset += ret;
+				return SEND_BUSY;
+			}
+			break;
+		case SENDING_FILE: //发送文件
+			DEBUG("SENDING FILE");
+			if(file_fd != -1 && file_data_len == 0) //读取文件
+			{
+				int ret = read(file_fd, file_data + file_data_len, FILE_DATA_LEN - file_data_len);
+				if(ret <=0)
+				{
+					close(file_fd);
+					file_fd = -1;
+				}
+				else
+					file_data_len += ret;
+				send_offset = 0;
+			}
+			if(len > 0) //发送文件内容
+			{
+				if(file_data_len<=0) 
+				{
+					INFO("Send file failed, file size:%d only send:%d\n", file_len, file_len - len);
+					status = SENDING_FINISHED;
+
+					if(file_fd != -1)
+					{
+						close(file_fd);
+						file_fd = -1;
+					}
+				}
+				else //已经读取到文件，直接发送
+				{
+					int ret = tcp_client_send_data(file_data + send_offset, file_data_len);
+					if(ret<0)
+					{
+						status = SENDING_FINISHED;
+						INFO("Send file failed, file size:%d only send:%d\n", file_len, file_len - len);
+						if(file_fd !=-1)
+						{
+							close(file_fd);
+							file_fd = -1;
+						}
+					}
+					else
+					{
+						len -= ret;
+						send_offset += ret;
+						file_data_len -= ret;
+					}
+					return SEND_BUSY;
+				}
+
+			}
+			else //len已经为0，文件发送完毕
+			{
+				status = SENDING_FINISHED;
+				if(file_fd != -1)
+				{
+					close(file_fd);
+					file_fd = -1;
+				}
+			}
+			return SEND_BUSY;
+			break;
+		case SENDING_FINISHED:
+			DEBUG("SENDING FINISHED\n");
+			if(file_fd >= 0)
+			{
+				close(file_fd);
+				file_fd = -1;
+			}
+			be_busy = 0;
+
+			return SEND_IDLE;
+		default:
+			INFO("Bad send status\n");
+	}
+}
+
+*/
 int submit_task(char *task, int len, const char *file_name)
 {
 	CHECK2(!be_busy);
@@ -350,5 +540,3 @@ int submit_task(char *task, int len, const char *file_name)
 	be_busy = 1;
 	return PS_SUCCESS;
 }
-
-

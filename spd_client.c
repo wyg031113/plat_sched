@@ -32,12 +32,14 @@ void inc_task()
 	*tsk_voice = *tsk_text;
 	tsk_voice->de.type = D_TYPE_VOICE;
 }
+#define TEST 30000
 int main()
 {
 	start_tcp_client();
-	int cnt = 300000;
+	int cnt = TEST;
 	while(cnt--)
 	{
+		sleep(5);
 		if(!is_busy())
 			inc_task();
 		if(!is_busy())
