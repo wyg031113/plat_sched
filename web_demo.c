@@ -61,7 +61,7 @@ int main2()
 	while(cnt--)
 	{
 		INFO("\033[1;33mweb demo run... main2\033[0m \n");
-		usleep(800000);
+		//usleep(800000);
 		memset(sig_buf, 0, sizeof(sig_buf));
 		memset(voice_buf, 0, sizeof(voice_buf));
 		int msg_type = get_msg_type();
@@ -87,15 +87,18 @@ int main2()
 				}
 			continue;
 		}
+		if(get_msg_type() == MSG_NOMSG)
+		{
+			//DEBUG("PUT TO circle a packet!\n");	
+			ret = snd_control_sig();
+			check_ret(ret);
 
-		ret = snd_control_sig();
-		check_ret(ret);
-
-		ret = snd_voice_sig();
-		check_ret(ret);
+			ret = snd_voice_sig();
+			check_ret(ret);
+			usleep(50000);
+		}
 		//DEBUG("Main loop.\n\n");
 	}
-	sleep(1);
 	stop_sig_voice();
 	return 0;
 }

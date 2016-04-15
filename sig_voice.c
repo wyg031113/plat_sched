@@ -8,12 +8,13 @@
 #include "plat_sched.h"
 #include "debug.h"
 
-#define DEFAULT_TIME_OUT 100000			//recv的超时时间，单位:微秒
-#define MAX_PKT_LEN 1024
+#define DEFAULT_TIME_OUT 100000				//recv的超时时间，单位:毫秒
+#define MAX_PKT_LEN 1024					//单个包最大长度
 
-//注意，环形缓冲区大小必须是2^n大小
+/*注意，环形缓冲区大小必须是2^n大小*/
 #define RCV_CB_BUF_SIZE 4096
 #define SND_CB_BUF_SIZE 4096
+
 /*接收和发送缓冲区定义
  */
 static char rcv_cb_buf[RCV_CB_BUF_SIZE];
@@ -21,32 +22,41 @@ static char snd_cb_buf[SND_CB_BUF_SIZE];
 static struct circle_buffer cb_rcv;
 static struct circle_buffer cb_snd;
 
-static volatile time_t web_server_start = 0;
-static volatile unsigned int last_heart_beat = 0;
+static volatile int web_server_start = 0;	
+static volatile time_t last_heart_beat = 0;
 /*临时发送接受缓冲区
+ * 首先把数据从环形缓冲区复制到临时缓冲区中，再发送
+ * 首先把数据接收到临时缓冲区中，再放到环形缓冲区中
  */
 static char rcv_buf[MAX_PKT_LEN];
 static char snd_buf[MAX_PKT_LEN];
 
+
 void check_addto_rcvbuf(char *data, int len);
 void send_packet(void);
-void *sig_voice_thread(void *arg);			//主线程
+void *sig_voice_rcv_thread(void *arg);			//接收主线程
+void *sig_voice_snd_thread(void *arg);			//发送主线程
 
 static volatile int stop_sv = 0;			//是否停止主线程 是=1  否=0
 
-static char webip[IPADDR_LEN]="127.0.0.1";			//WEB端UDP服务器IP
+static char webip[IPADDR_LEN]="127.0.0.1";	//WEB端UDP服务器IP
 static unsigned short webport = 7777;		//WEB端UDP服务器端口
 
-static char preip[IPADDR_LEN]="0.0.0.0";			//区长台UDP服务器监听IP
+static char preip[IPADDR_LEN]="0.0.0.0";	//区长台UDP服务器监听IP
 static unsigned short preport = 6666;		//区长台UDP服务器监听端口
 
-static struct sockaddr_in webaddr;
-static int websockfd;
 
+static struct sockaddr_in webaddr;			
+static int websockfd;						//web端的socket
+
+/*判断web端是否启动
+ * return 1-启动 0－未启动
+ */
 int is_web_server_started(void)
 {
 	return web_server_start;
 }
+
 /*设置WEB端服务器IP和端口
  * ipaddr: WEB端服务器IP
  * p:	   WEB端服务器端口
@@ -71,15 +81,16 @@ void set_preip_port(const char *ipaddr, unsigned short p)
 
 /*启动sig voice 主线程
  */
-
-pthread_t sig_voice_tid;
+pthread_t sig_voice_rcv_tid;
+pthread_t sig_voice_snd_tid;
 void start_sig_voice(void)
 {
 	int ret = 0;
 
 	cirbuf_init(&cb_rcv, rcv_cb_buf, RCV_CB_BUF_SIZE);
 	cirbuf_init(&cb_snd, snd_cb_buf, SND_CB_BUF_SIZE);
-	CHECK2( (ret = pthread_create(&sig_voice_tid, NULL, sig_voice_thread, NULL)) == 0);
+	CHECK2( (ret = pthread_create(&sig_voice_rcv_tid, NULL, sig_voice_rcv_thread, NULL)) == 0);
+	CHECK2( (ret = pthread_create(&sig_voice_snd_tid, NULL, sig_voice_snd_thread, NULL)) == 0);
 	INFO("sig voice started!\n");
 }
 
@@ -88,20 +99,33 @@ void start_sig_voice(void)
 void stop_sig_voice(void)
 {
 	stop_sv = 1;
-	pthread_join(sig_voice_tid, NULL);
+	pthread_join(sig_voice_rcv_tid, NULL);
+	pthread_join(sig_voice_snd_tid, NULL);
 }
 
 void handle_sig_voice(void);
 
 /**线程函数
  */
-void *sig_voice_thread(void *arg)
+void *sig_voice_rcv_thread(void *arg)
 {
-	pthread_detach(pthread_self());
 	DEBUG("voice sig thread started!\n");
 	handle_sig_voice();
 }
 
+void prepare_webaddr(void);
+void *sig_voice_snd_thread(void *arg)
+{
+	prepare_webaddr();
+	while(!stop_sv)
+	{
+		if(!cirbuf_empty(&cb_snd))
+			send_packet();
+		else
+			usleep(300000);
+	}
+	return NULL;
+}
 /*设置socfd非阻塞
  */
 void setnonblocking(int sockfd)
@@ -127,6 +151,7 @@ void prepare_webaddr(void)
 	CHECK(setsockopt(websockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val)));
 	setnonblocking(websockfd);
 }
+
 /*主要功能都在这里
  */
 void handle_sig_voice(void)
@@ -134,11 +159,8 @@ void handle_sig_voice(void)
 	int serfd;
 	int ret;
 	serfd = start_server();
-	prepare_webaddr();
 	while(!stop_sv)
 	{
-		//DEBUG("Main loop.\n");
-		send_packet();
 		ret = recvfrom(serfd, rcv_buf, MAX_PKT_LEN, 0, NULL, NULL);
 		if(ret<=0)
 		{
@@ -156,7 +178,7 @@ void handle_sig_voice(void)
 		}
 		else
 		{
-			DEBUG("Recv a udp packet!\n");
+			//DEBUG("Recv a udp packet!\n");
 			check_addto_rcvbuf(rcv_buf, ret);
 		}
 
@@ -165,7 +187,7 @@ void handle_sig_voice(void)
 		else
 			web_server_start = 1;
 	}
-	//DEBUG("Main loop stopped!\n");
+	INFO("Sig recv stopped!\n");
 	close(serfd);
 	close(websockfd);
 }
@@ -271,7 +293,6 @@ void check_addto_rcvbuf(char *data, int len)
  */
 int udp_snd(uint8 *buf, int len)
 {
-	DEBUG("UDP SND\n");
 	int ret = sendto(websockfd, buf, len, 0, (struct sockaddr*)&webaddr, sizeof(struct sockaddr));
 	if(ret <=0 )
 	{
@@ -284,6 +305,8 @@ int udp_snd(uint8 *buf, int len)
 	return 1;
 }
 
+/*将环形缓冲区中的包发出去
+ */
 void send_packet(void)
 {
 	int ret;
@@ -291,8 +314,7 @@ void send_packet(void)
 	//注意这两个静态变量,函数退出后依然保持
 	static int len = 0;
 	static int beSended = 1;
-	//首先检查上次发送结果，如果失败就重写发送
-	//DEBUG("Send Packet!\n");
+	//首先检查上次发送结果，如果失败就重新发送
 	if(!beSended)
 	{
 		DEBUG("Resend\n");
@@ -301,7 +323,7 @@ void send_packet(void)
 	}
 	if(cirbuf_empty(&cb_snd))
 		return;
-	DEBUG("Send new\n");
+
 	//从环形缓冲区里复制出一个包，要区分是信令还是声音
 	//这里默认相信环形缓冲里的包是完好的。ASSERT在取消DEBUG后会失效
 	ret = copy_cirbuf_to_user(&cb_snd, snd_buf, 2);
@@ -312,11 +334,11 @@ void send_packet(void)
 		ASSERT(ret == (sizeof(struct control_sig)-2));
 		len = sizeof(struct control_sig);
 	}
-	else if(snd_buf[1] == V_CMD) //声音
+	else if(snd_buf[1] == V_CMD) //语音
 	{
 		struct voice *vc = (struct voice*)snd_buf;
 		ret = copy_cirbuf_to_user(&cb_snd, snd_buf+2, 4);
-		ASSERT(ret == 4);
+		CHECK2(ret == 4 &&  vc->len+6 <= MAX_PKT_LEN);
 		ret = copy_cirbuf_to_user(&cb_snd, vc->data, vc->len);
 		ASSERT(ret == vc->len);
 		len = vc->len + sizeof(struct voice);
@@ -329,6 +351,10 @@ void send_packet(void)
 //		对外接口定义											  //
 //----------------------------------------------------------------//		
 
+/*将一个信令包放到环形缓冲区中
+ * 返回：EBUFF_FULL缓形缓冲区満，一个字节也没有放入
+ *       PS_SUCCESS放入成功
+ */
 int put_sig(struct control_sig *cs)
 {
 	int real_len = sizeof(struct control_sig);
@@ -337,9 +363,14 @@ int put_sig(struct control_sig *cs)
 
 	ASSERT(cs->type == VC_TYPE && cs->cmd == CS_CMD);
 	CHECK2(copy_cirbuf_from_user(&cb_snd, (uint8 *)cs, real_len) == real_len);
+	DEBUG("put sig success\n");
 	return PS_SUCCESS;
 }
 
+/*放入一个语音包到环形缓冲区中 
+ * 返回：EBUFF_FULL缓形缓冲区満，一个字节也没有放入
+ *       PS_SUCCESS放入成功
+ */
 int put_voice(struct voice *vc)
 {
 	int real_len = 0;
@@ -348,9 +379,15 @@ int put_voice(struct voice *vc)
 	if(real_len > cirbuf_get_free(&cb_snd))
 		return EBUFF_FULL;
 	CHECK2(copy_cirbuf_from_user(&cb_snd, (uint8 *)vc, real_len) == real_len);
+	DEBUG("put voice success\n");
 	return PS_SUCCESS;
 }
 
+/*获取缓冲区头的包类型，并且可以判断缓冲区中有没有包。
+ * return: MSG_NOMSG 没有包
+ *         MSG_SIGNAL 信令包
+ *         MSG_VOICE 语音包
+ */
 int get_msg_type(void)
 {
 	struct control_sig cs;
@@ -365,22 +402,30 @@ int get_msg_type(void)
 		return MSG_VOICE;
 }
 
+/*从环形缓冲区获取一个语音包
+ * return: EUSER_BUFF_TOO_SHORT 用户缓冲区太短，放不下一个包
+ *		   PS_SUCCESS:获取成功
+ */
 int get_voice(struct voice *vc, uint32 len)
 {
 	if(len < 6)
 		return EUSER_BUFF_TOO_SHORT;
 	ASSERT(vc != NULL);
-	CHECK2(copy_cirbuf_to_user(&cb_rcv, (uint8 *)vc, 6) == 6);
+	CHECK2(copy_cirbuf_to_user_flag(&cb_rcv, (uint8 *)vc, 6, 0) == 6);
 	if(len < vc->len + 6)
 		return EUSER_BUFF_TOO_SHORT;
-	CHECK2(copy_cirbuf_to_user(&cb_rcv, (uint8 *)vc + 6, vc->len) == vc->len);
+	CHECK2(copy_cirbuf_to_user(&cb_rcv, (uint8 *)vc, vc->len+6) == vc->len + 6);
 	return PS_SUCCESS;
 }
 
+/*从环形缓冲区获取一个信令包
+ * return: EUSER_BUFF_TOO_SHORT 用户缓冲区太短，放不下一个包
+ *		   PS_SUCCESS获取成功
+ */
 int get_sig(struct control_sig *cs)
 {
 	int len = sizeof(struct control_sig);
 	ASSERT(cs != NULL);
-	CHECK2(copy_cirbuf_to_user(&cb_rcv, (uint8 *)cs, len) ==  len);
+	CHECK2(copy_cirbuf_to_user(&cb_rcv, (uint8 *)cs, len) == len);
 	return PS_SUCCESS;
 }

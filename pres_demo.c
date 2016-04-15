@@ -58,7 +58,7 @@ int main1()
 	start_sig_voice();
 	while(cnt--)
 	{
-		sleep(1);
+		//sleep(1);
 		INFO("\033[1;33m main1\033[0m \n");
 		memset(sig_buf, 0, sizeof(sig_buf));
 		memset(voice_buf, 0, sizeof(voice_buf));
@@ -86,12 +86,15 @@ int main1()
 			continue;
 		}
 
-		ret = snd_control_sig();
-		check_ret(ret);
+		//if(get_msg_type() == MSG_NOMSG)
+		{
+			ret = snd_control_sig();
+			check_ret(ret);
 
-		ret = snd_voice_sig();
-		check_ret(ret);
-		usleep(100000);
+			ret = snd_voice_sig();
+			check_ret(ret);
+			usleep(50000);
+		}
 		//DEBUG("Main loop.\n\n");
 	}
 	sleep(1);
