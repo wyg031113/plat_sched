@@ -61,7 +61,7 @@ void set_app_ip(const char *ipaddr, unsigned short port)
 {
 	strncpy(app_ip, ipaddr, IPADDR_LEN);
 	app_port = port;
-	DEBUG("set app ip:%s port:%d\n", app_ip, app_port);
+	INFO("set app ip:%s port:%d\n", app_ip, app_port);
 }
 
 /*判断是否连接到服务器
@@ -270,11 +270,11 @@ static void *tcp_client_read_thread(void *arg)
 		{
 			if(cirbuf_get_free(&cb_rcv_tcp) < offset)
 			{
-				sleep(100000);
+				usleep(50000);
 				continue;
 			}
 			CHECK2(copy_cirbuf_from_user(&cb_rcv_tcp, tmp_rcv_buf, offset));
-			DEBUG("PUT a frame into circle buffer:copied_len=%d pkt_len=%d\n", offset, ss->len + sizeof(struct sess));
+			//DEBUG("PUT a frame into circle buffer:copied_len=%d pkt_len=%d\n", offset, ss->len + sizeof(struct sess));
 			last_success = 1;
 		}
 		//接收头
@@ -358,7 +358,7 @@ static void *tcp_client_write_thread(void *arg)
 			if(do_task() == PS_SEND_ERROR)
 			{
 				need_connect = 1;
-				DEBUG("任务失败，需要重新连接服务器!\n");
+				INFO("任务失败，需要重新连接服务器!\n");
 			}
 			be_busy = 0;
 			last_send_heart = time(NULL);
@@ -463,181 +463,11 @@ int send_file(const char *file_name, int len)
 	return tlen - len;
 }
 
-/*
-#define FILE_DATA_LEN 1024
-static int send_packet_in_buffer(void)
-{
-	DEBUG("Send user data\n");
-	static int send_offset = 0;
-	static int len = 0;
-	static int file_fd = -1; //注意意外退出时关闭文件
-	static struct stat st;
-	static int file_len = 0;
-	static char file_data[FILE_DATA_LEN];
-	static char file_data_len = 0;
-	if(!be_busy)
-		return SEND_IDLE;
-	switch(status)
-	{
-		case NEW_TASK:		//新任务
-			DEBUG("NEW_TASK\n");
-			if(ptsk->de.type == D_TYPE_TEXT)//普通文件任务，不用发送文件
-			{
-				status = SENDING_HEADER;
-				len = task_len;
-				send_offset = 0;
-				return SEND_BUSY;
-			}
-			else if(ptsk->de.type == D_TYPE_VOICE) //语音任务，要发送语音文件
-			{
-				//准备文件
-				if(access(file, R_OK)!=0)
-				{
-					INFO("file:%s can't read! errno=%s\n", strerror(errno));
-					status = SENDING_FINISHED;
-					return SEND_BUSY;
-				}
-				if(stat(file, &st) !=0)
-				{
-					INFO("file:%s can't get stat! errno=%s\n", strerror(errno));
-					status = SENDING_FINISHED;
-					return SEND_BUSY;
-				}
-				file_fd = open(file, O_RDONLY);
-				if(file_fd < 0)
-				{
-					INFO("Can't open file %s\n", file);
-					status = SENDING_FINISHED;
-					return SEND_BUSY;
-				}
-
-				//计算帧头
-				ptsk->se.len = sizeof(struct pres) + sizeof(struct detail) + st.st_size;
-				ptsk->pr.len = sizeof(struct detail) + st.st_size;
-				ptsk->de.len = st.st_size;
-
-				//语音文件信息
-				file_len = st.st_size;
-				send_offset = 0;
-				len = sizeof(struct sess) + sizeof(struct pres) + sizeof(struct detail);
-				status = SENDING_VOICE;
-			}
-			break;
-
-		case SENDING_HEADER:
-			DEBUG("SENDING HEADER\n");
-		case SENDING_VOICE://这里只发送帧头
-			DEBUG("SENDING_VOICE\n");
-			if(len == 0) //帧头发送完毕
-			{
-				if(status == SENDING_VOICE)
-				{
-					status = SENDING_FILE; //语音
-					send_offset = 0;
-					len = file_len;
-					file_data_len = 0;
-				}
-				else //如果不是发语音，则已经完成了任务
-				{
-					status = SENDING_FINISHED;
-				}
-				return SEND_BUSY;
-			}
-			else //发送帧头
-			{
-				int ret = tcp_client_send_data(task_buf + send_offset, len);
-				if(ret == -1)
-				{
-					status = SENDING_FINISHED;
-					if(file_fd != -1 && status == SENDING_VOICE)
-					{
-						close(file_fd);
-						file_fd = -1;
-					}
-					return SEND_BUSY;
-				}
-				len -= ret;
-				send_offset += ret;
-				return SEND_BUSY;
-			}
-			break;
-		case SENDING_FILE: //发送文件
-			DEBUG("SENDING FILE");
-			if(file_fd != -1 && file_data_len == 0) //读取文件
-			{
-				int ret = read(file_fd, file_data + file_data_len, FILE_DATA_LEN - file_data_len);
-				if(ret <=0)
-				{
-					close(file_fd);
-					file_fd = -1;
-				}
-				else
-					file_data_len += ret;
-				send_offset = 0;
-			}
-			if(len > 0) //发送文件内容
-			{
-				if(file_data_len<=0) 
-				{
-					INFO("Send file failed, file size:%d only send:%d\n", file_len, file_len - len);
-					status = SENDING_FINISHED;
-
-					if(file_fd != -1)
-					{
-						close(file_fd);
-						file_fd = -1;
-					}
-				}
-				else //已经读取到文件，直接发送
-				{
-					int ret = tcp_client_send_data(file_data + send_offset, file_data_len);
-					if(ret<0)
-					{
-						status = SENDING_FINISHED;
-						INFO("Send file failed, file size:%d only send:%d\n", file_len, file_len - len);
-						if(file_fd !=-1)
-						{
-							close(file_fd);
-							file_fd = -1;
-						}
-					}
-					else
-					{
-						len -= ret;
-						send_offset += ret;
-						file_data_len -= ret;
-					}
-					return SEND_BUSY;
-				}
-
-			}
-			else //len已经为0，文件发送完毕
-			{
-				status = SENDING_FINISHED;
-				if(file_fd != -1)
-				{
-					close(file_fd);
-					file_fd = -1;
-				}
-			}
-			return SEND_BUSY;
-			break;
-		case SENDING_FINISHED:
-			DEBUG("SENDING FINISHED\n");
-			if(file_fd >= 0)
-			{
-				close(file_fd);
-				file_fd = -1;
-			}
-			be_busy = 0;
-
-			return SEND_IDLE;
-		default:
-			INFO("Bad send status\n");
-	}
-}
-
-*/
+/*提交一个任务，未完成之前提交下一个任务会失败
+ * task:任务缓冲区
+ * len：任务长度
+ * file_name:如果发送语音文件，则是文件名
+ */
 int submit_task(char *task, int len, const char *file_name)
 {
 	CHECK2(!be_busy);
@@ -663,6 +493,8 @@ int submit_task(char *task, int len, const char *file_name)
 }
 
 /*获取一个帧
+ * buf:用户缓冲区
+ * len:用户缓冲区长度
  * return: 成功返帧长度 失败返回原因
  */
 int get_frame(char *buf, int len)

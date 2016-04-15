@@ -7,7 +7,7 @@
 #include "debug.h"
 #include "plat_sched.h"
 
-#define TASK_LEN 20480000
+#define TASK_LEN 2048000
 int offset = 0;
 char rcv_buf[TASK_LEN];
 int npkt_send = 0;
@@ -111,7 +111,9 @@ int main5()
 	{
 		INFO("\033[1;33mspd client run... main5\033[0m \n");
 		DEBUG("npkt_send:%d npkt_recv:%d\n", npkt_send, npkt_recv);
-		sleep(1);
+		if(!is_connect())
+			sleep(1);
+		//sleep(1);
 		while(have_pkt())
 		{
 			int len = get_frame(rcv_buf, TASK_LEN);
@@ -126,12 +128,13 @@ int main5()
 				npkt_recv ++;
 			}
 		}
-			DEBUG("No pkt!\n");
+		if(!have_pkt())
+			DEBUG("NO packet ......\n");
 		if(!is_busy())
 			inc_task();
 		if(!is_busy())
 		{
-			printf("last task status:%d\n", get_status());
+			DEBUG("last task status:%d\n", get_status());
 			submit_task((char*)tsk_text, tsk_text->se.len + sizeof(struct sess), NULL);
 			npkt_send++;
 		}
@@ -139,18 +142,19 @@ int main5()
 		{
 			DEBUG("SUBMIT text failed!\n");
 		}
-		usleep(1000000);
+		usleep(100000);
 		if(!is_busy())
 		{
 			printf("last task status:%d\n", get_status());
 			submit_task((char*)tsk_voice, sizeof(struct pres_task), "JE.txt");
 			npkt_send++;
+			DEBUG("-------task submited:%d\n", npkt_send);
 		}
 		else
 		{
 			DEBUG("SUBMIT voice failed\n");
 		}
-		usleep(1000000);
+	//	usleep(1000000);
 	}
 	stop_tcp_client();
 	return 0;
