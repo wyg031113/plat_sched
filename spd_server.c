@@ -8,7 +8,7 @@
 #include "debug.h"
 #include "plat_sched.h"
 
-#define TASK_LEN 2048000
+#define TASK_LEN 20048000
 
 int npkt_send, npkt_recv;
 
@@ -64,6 +64,11 @@ char rcv_buf[TASK_LEN];
 int offset = 0;
 void show_binary(char *buf, int len)
 {
+
+	//---------------------
+	//
+	//
+		return;
 	int i;
 	char c = 0;
 	for(i = 0; i < len; i++)
@@ -78,7 +83,8 @@ void show(char *buf, int len)
 {
 	int i;
 	struct pres_task *pt = (struct pres_task*)buf;
-	INFO("ptk len = %d\n", pt->se.len + sizeof(struct sess));
+	if(len >= sizeof(struct sess))
+		INFO("ptk len = %d cur_len:%d\n", pt->se.len + sizeof(struct sess), len);
 	if(len >=16 && pt->se.flag == S_HEART_BEAT)
 	{
 		DEBUG("a heart beat!\n");
@@ -126,7 +132,7 @@ void *snd_thread(void *arg)
 	int ret;
 	while(1)
 	{
-		INFO("main6 send npkt_send=%d\n", npkt_send);
+		INFO("\033[1;33mspd server snd thread run... main6\033[0m \n");
 		if(time(NULL) - last_send_heart > 1)
 		{
 
@@ -143,6 +149,7 @@ void *snd_thread(void *arg)
 
 		inc_task();
 		int len = tsk_text->se.len + sizeof(struct sess);
+		INFO("send len=%d\n", len);
 		while(len>0)
 		{
 			if( (ret = send(client_fd, text, len, 0)) <= 0)
@@ -160,7 +167,7 @@ void *snd_thread(void *arg)
 		}
 			npkt_send++;
 			DEBUG("Send a text packet!\n");
-			sleep(20);
+			sleep(2);
 			DEBUG("WAKE UP!!!!!!!!!!\n");
 	}
 	close(client_fd);
@@ -172,7 +179,7 @@ void *rcv_thread(void *arg)
 	int i;
 	while(1)
 	{
-		INFO("main6 rcv thread... offset=%d npkt_recv=%d\n", offset, npkt_recv);
+		INFO("\033[1;33mspd server rcv thread run... main6\033[0m \n");
 		int ret = recv(client_fd, rcv_buf+offset, TASK_LEN-offset, 0);
 		DEBUG("rcv awake!\n");
 
@@ -183,7 +190,8 @@ void *rcv_thread(void *arg)
 		}
 		npkt_recv++;
 		offset += ret;
-		show(rcv_buf, offset);
+		for(i = 0; i < 10; i++)
+			show(rcv_buf, offset);
 	//	show_binary(rcv_buf, ret);
 	//	offset = 0;
 		sleep(1);

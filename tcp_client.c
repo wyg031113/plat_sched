@@ -48,7 +48,7 @@ int main3()
 	sleep(2);
 	while(cnt--)
 	{
-		INFO("tcp_client runn. main3\n");
+		INFO("\033[1;33mtcp client run... main3\033[0m \n");
 		if(last_success)
 			inc_sp();
 		CHECK(ret = send(serfd, (char*)sp+send_offset, sp->pkt_len-send_offset, 0));

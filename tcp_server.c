@@ -21,7 +21,7 @@ int main4()
 		
 	while(1)
 	{
-
+		INFO("\033[1;33mtcp server... main4\033[0m \n");
 		if(!is_client_connected() && !have_packet())
 		{
 			no = 0;

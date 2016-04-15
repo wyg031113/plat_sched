@@ -60,7 +60,7 @@ int main2()
 	start_sig_voice();
 	while(cnt--)
 	{
-		INFO("web demo run... main2\n");
+		INFO("\033[1;33mweb demo run... main2\033[0m \n");
 		usleep(800000);
 		memset(sig_buf, 0, sizeof(sig_buf));
 		memset(voice_buf, 0, sizeof(voice_buf));

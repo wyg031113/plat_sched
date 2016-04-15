@@ -174,6 +174,7 @@ int tcp_client_rcv_data(void *data, int len)
 		if((ret == -1 && errno != EAGAIN) || ret == 0)
 		{
 			raise(SIGPIPE);
+			INFO("raise SIGPIPE\n");
 			break;
 		}
 		else if(ret == -1 && errno == EAGAIN)
@@ -183,6 +184,7 @@ int tcp_client_rcv_data(void *data, int len)
 			{
 
 				raise(SIGPIPE);
+				INFO("raise SIGPIPE\n");
 				DEBUG("no heart beat.....\n");
 				break;
 			}
@@ -281,7 +283,7 @@ static void *tcp_client_read_thread(void *arg)
 		if(ret != sizeof(struct sess))
 		{
 			need_connect = 1;
-			raise(SIGPIPE);
+			//raise(SIGPIPE);
 			continue;
 		}
 		else
@@ -292,7 +294,7 @@ static void *tcp_client_read_thread(void *arg)
 			if(tcp_client_rcv_data(tmp_rcv_buf+offset, 11) != 11)
 			{
 				need_connect = 1;
-				raise(SIGPIPE);
+				//raise(SIGPIPE);
 				continue;
 			}
 			last_rcv_heart = time(NULL);
@@ -310,7 +312,7 @@ static void *tcp_client_read_thread(void *arg)
 
 			if(tcp_client_rcv_data(tmp_rcv_buf + offset, ss->len) != ss->len)
 			{
-				raise(SIGPIPE);
+		//		raise(SIGPIPE);
 				need_connect = 1;
 				continue;
 			}
@@ -396,6 +398,9 @@ int do_task(void)
 			status = TASK_FAIL;
 			return PS_FAIL;
 		}
+		INFO("file:%s size:%d\n", file, st.st_size);
+		if(st.st_size<0)
+			exit(-1);
 		//计算帧头
 		ptsk->se.len = sizeof(struct pres) + sizeof(struct detail) + st.st_size;
 		ptsk->pr.len = sizeof(struct detail) + st.st_size;
@@ -411,6 +416,7 @@ int do_task(void)
 		}
 
 		//发送文件
+		INFO("header_len=%d st.st_size=%d\n", header_len, st.st_size);
 		if(send_file(file, st.st_size) != st.st_size)
 		{
 			INFO("send  file failed!\n");
@@ -418,6 +424,7 @@ int do_task(void)
 			return PS_SEND_ERROR;
 		}		
 
+		INFO("Send pkt:size=%d\n", header_len + st.st_size);
 		status = TASK_SUCCESS;
 	}
 	return PS_SUCCESS;

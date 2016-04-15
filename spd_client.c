@@ -14,6 +14,10 @@ int npkt_send = 0;
 int npkt_recv = 0;
 void show_binary(char *buf, int len)
 {
+	//-----------------
+	//
+	//
+		return;
 	int i;
 	char c = 0;
 	for(i = 0; i < len; i++)
@@ -105,9 +109,10 @@ int main5()
 	int cnt = TEST;
 	while(cnt--)
 	{
+		INFO("\033[1;33mspd client run... main5\033[0m \n");
 		DEBUG("npkt_send:%d npkt_recv:%d\n", npkt_send, npkt_recv);
-		sleep(5);
-		if(have_pkt())
+		sleep(1);
+		while(have_pkt())
 		{
 			int len = get_frame(rcv_buf, TASK_LEN);
 			if(len < 0)
@@ -121,10 +126,7 @@ int main5()
 				npkt_recv ++;
 			}
 		}
-		else
-		{
 			DEBUG("No pkt!\n");
-		}
 		if(!is_busy())
 			inc_task();
 		if(!is_busy())

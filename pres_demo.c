@@ -59,6 +59,7 @@ int main1()
 	while(cnt--)
 	{
 		sleep(1);
+		INFO("\033[1;33m main1\033[0m \n");
 		memset(sig_buf, 0, sizeof(sig_buf));
 		memset(voice_buf, 0, sizeof(voice_buf));
 		int msg_type = get_msg_type();
