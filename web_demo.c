@@ -51,7 +51,7 @@ void check_ret(int ret)
 			DEBUG("\033[1;33m BUFFER FULL\033[0m \n");
 	}
 }
-int main()
+int main2()
 {
 	int cnt = 10000000;
 	int ret;
@@ -60,6 +60,8 @@ int main()
 	start_sig_voice();
 	while(cnt--)
 	{
+		INFO("web demo run... main2\n");
+		usleep(800000);
 		memset(sig_buf, 0, sizeof(sig_buf));
 		memset(voice_buf, 0, sizeof(voice_buf));
 		int msg_type = get_msg_type();
@@ -91,7 +93,6 @@ int main()
 
 		ret = snd_voice_sig();
 		check_ret(ret);
-		usleep(100000);
 		//DEBUG("Main loop.\n\n");
 	}
 	sleep(1);

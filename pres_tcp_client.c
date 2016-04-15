@@ -100,6 +100,7 @@ void sig_pipe(int sig)
 {
 	close(app_fd);
 	CHECK(app_fd = socket(AF_INET, SOCK_STREAM, 0));
+	INFO("socket fd:%d\n", app_fd);
 }
 
 /*保证连接到服务器才返回
@@ -451,6 +452,7 @@ int send_file(const char *file_name, int len)
 		}
 		len -= ret;
 	}
+	close(file_fd);
 	return tlen - len;
 }
 

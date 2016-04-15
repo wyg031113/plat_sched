@@ -12,7 +12,7 @@
 #define MAX_LEN 2048
 char buf[MAX_LEN];
 
-int main()
+int main4()
 {
 	int cnt = 1000000;
 	start_pres_server();
@@ -52,7 +52,7 @@ int main()
 			}
 		}
 		else
-			usleep(100000);
+			usleep(1000000);
 	}
 	stop_pres_server();
 }

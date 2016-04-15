@@ -42,7 +42,7 @@ time_t last_send_heart;
 char heart_beat_packet[16] = { 0xb, 0x00, 0x00, 0x00, 0x0f, 0xFF, 0xFF, 0xFF, 0XFF, 0xFF,0xFF, 0xFF, 0xFF,0xFF, 0xFF,0xFF};
 /*开始监听
  */
-int start_listen(void)
+static int start_listen(void)
 {
 	int sockfd;
 	struct sockaddr_in ser_addr;
@@ -78,6 +78,7 @@ void show(char *buf, int len)
 {
 	int i;
 	struct pres_task *pt = (struct pres_task*)buf;
+	INFO("ptk len = %d\n", pt->se.len + sizeof(struct sess));
 	if(len >=16 && pt->se.flag == S_HEART_BEAT)
 	{
 		DEBUG("a heart beat!\n");
@@ -125,7 +126,7 @@ void *snd_thread(void *arg)
 	int ret;
 	while(1)
 	{
-		DEBUG("npkt_send=%d\n", npkt_send);
+		INFO("main6 send npkt_send=%d\n", npkt_send);
 		if(time(NULL) - last_send_heart > 1)
 		{
 
@@ -171,7 +172,7 @@ void *rcv_thread(void *arg)
 	int i;
 	while(1)
 	{
-		DEBUG("rcv thread... offset=%d npkt_recv=%d\n", offset, npkt_recv);
+		INFO("main6 rcv thread... offset=%d npkt_recv=%d\n", offset, npkt_recv);
 		int ret = recv(client_fd, rcv_buf+offset, TASK_LEN-offset, 0);
 		DEBUG("rcv awake!\n");
 
@@ -185,11 +186,11 @@ void *rcv_thread(void *arg)
 		show(rcv_buf, offset);
 	//	show_binary(rcv_buf, ret);
 	//	offset = 0;
-		sleep(10);
+		sleep(1);
 	}
 	close(client_fd);
 }
-int main()
+int main6()
 {
 	int ser_fd = start_listen();
 	int client_fd;

@@ -38,23 +38,24 @@ void inc_sp(void)
 	sp->pkt_len = 23 + text_len;
 	sp->text_len = text_len;
 }
-int main()
+int main3()
 {
 	connect_server();
-	int cnt = 10000;
+	int cnt = 10000000;
 	int last_success = 1;
 	int send_offset = 0;
 	int ret;
 	sleep(2);
 	while(cnt--)
 	{
+		INFO("tcp_client runn. main3\n");
 		if(last_success)
 			inc_sp();
 		CHECK(ret = send(serfd, (char*)sp+send_offset, sp->pkt_len-send_offset, 0));
 		send_offset += ret;
 		if(send_offset == sp->pkt_len)
 		{
-			DEBUG("Send no:%d len=%d\n", sp->no, send_offset);
+			//DEBUG("Send no:%d len=%d\n", sp->no, send_offset);
 			send_offset = 0;
 			last_success = 1;
 		}
@@ -63,8 +64,8 @@ int main()
 			last_success = 0;
 		}
 		
-		DEBUG("Run cnt=%d ...\n", cnt);
-		//usleep(10000);
+		//DEBUG("Run cnt=%d ...\n", cnt);
+		usleep(1000000);
 	}
 	return 0;
 }

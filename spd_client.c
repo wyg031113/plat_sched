@@ -29,6 +29,7 @@ int show(char *buf, int len)
 {
 	int i;
 	struct pres_task *pt = (struct pres_task*)buf;
+	INFO("pkt_len=%d cur_len=%d\n", sizeof(struct sess)+pt->se.len, len);
 	if(len >=16 && pt->se.flag == S_HEART_BEAT)
 	{
 		DEBUG("a heart beat!\n");
@@ -97,8 +98,8 @@ void inc_task()
 	*tsk_voice = *tsk_text;
 	tsk_voice->de.type = D_TYPE_VOICE;
 }
-#define TEST 30000
-int main()
+#define TEST 30000000
+int main5()
 {
 	start_tcp_client();
 	int cnt = TEST;
