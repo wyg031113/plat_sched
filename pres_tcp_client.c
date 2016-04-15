@@ -17,14 +17,7 @@
 static char rcv_buf_tcp[RCV_TCP_BUF_SIZE];
 struct circle_buffer cb_rcv_tcp;
 
-enum task_status
-{
-	TASK_NEW,
-	TASK_RUNNING,
-	TASK_WAITING,
-	TASK_SUCCESS,
-	TASK_FAIL
-};
+
 
 enum task_status status;			//任务当前状态
 static char task_buf[MAX_TASK_LEN]; //提交任务保存到这里

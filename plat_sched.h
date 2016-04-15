@@ -114,6 +114,8 @@ struct sched_pres
 	uint8	data[0];		//文本数据Data0 ~ DataN
 }__attribute__((packed));
 
+
+/*--------------------------------------------------------------------------------------------------*/
 /*设置WEB端服务器IP和端口
  * ipaddr: WEB端服务器IP
  * p:	   WEB端服务器端口
@@ -172,13 +174,34 @@ int put_sig(struct control_sig *cs);
  *        PS_FAIL-失败，其他原因
  */
 int put_voice(struct voice *vc);
+/*---------------------------------------------------------------------------------------*/
 
 
+
+/*----------------------------------------------------------------------------------------*/
+enum task_status //任务状态
+{
+	TASK_NEW,
+	TASK_RUNNING,
+	TASK_WAITING,
+	TASK_SUCCESS,
+	TASK_FAIL
+};
 
 void start_tcp_client(void);
 void stop_tcp_client(void);
+/*设置应用服务器ip和端口
+ */
 void set_app_ip(const char *ipaddr, unsigned short port);
-inline int is_connected(void);
+
+/*判断是否连接到服务器
+ * return 1-已经连接  0－未连接
+ */
+inline int is_connect(void);
+
+/*判断当前有没有任务
+ * 返回：0－没有 1－有
+ */
 inline int is_busy(void);
 int submit_task(char *task, int len, const char *file_name);
 /*判断有没有收到包
@@ -189,17 +212,29 @@ inline int have_pkt(void);
  */
 int get_frame(char *buf, int len);
 
+/*获取当前任务状态
+ * return 返回状态码，参见enum task_status.
+ */
+inline enum task_status get_status(void);
+/*-------------------------------------------------------------------------------------*/
 
 
+/*--------------------------------------------------------------------------------------*/
+ /* 监听所有ip，ipaddr="0.0.0.0"
+ */
 void set_pre_serip_port(const char *ipaddr, unsigned short p);
 void start_pres_server(void);
 void stop_pres_server(void);
-inline int have_packet(void);
-int get_packet(char *buf, int len);
-
-
-/*循环缓冲区
+/*判断缓冲区中有没有包
  */
+int have_packet(void);
+
+/*从缓冲区中获取包
+ */
+int get_packet(char *buf, int len);
+/*--------------------------------------------------------------------------------------*/
+
+/*----------------------------循环缓冲区-----------------------------------------------*/
 //-----!!! 环形缓冲区大小必须是2的n次方(2^n) !!!-----//
 #define COPY_ONLY 0 //只复制，不改变缓冲区头尾指针.
 #define COPY_CONS 1
@@ -250,6 +285,7 @@ int copy_cirbuf_to_user_flag(struct circle_buffer *cb, uint8 *user, uint32 len, 
  * return:实际移动字节数
  */
 int copy_cirbuf_from_user(struct circle_buffer *cb, const uint8  *user, uint32 len);
+/*--------------------------------------------------------------------------------------------------------------------*/
 
 /*设置socfd非阻塞
  */
