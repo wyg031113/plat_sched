@@ -65,7 +65,7 @@ int main3()
 		}
 		
 		//DEBUG("Run cnt=%d ...\n", cnt);
-		usleep(1000000);
+		usleep(10000);
 	}
 	return 0;
 }

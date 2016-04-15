@@ -25,6 +25,7 @@ int main4()
 		if(!is_client_connected() && !have_packet())
 		{
 			no = 0;
+			DEBUG("no client!\n");
 			usleep(1000000);
 		}
 		if(have_packet())
@@ -32,14 +33,14 @@ int main4()
 			int len = get_packet(buf, MAX_LEN);
 			CHECK2(len >=23 && len == sp->pkt_len);
 			INFO("Get a packet!\n dst_tel_code:%x\nsrc_tel_code:%x\n"
-				 "pkt_len:%d\nno%d\ntime:%x\ndata_type:%x\ndata_sub_type:%x\n"
+				 "pkt_len:%d\nno%d\ntime:%s\ndata_type:%x\ndata_sub_type:%x\n"
 				 "test_len:%d\n",
-				 sp->dst_tel_code, sp->src_tel_code, sp->pkt_len, sp->no, sp->time,
+				 sp->dst_tel_code, sp->src_tel_code, sp->pkt_len, sp->no, ctime(&sp->time),
 				 sp->data_type, sp->data_sub_type, sp->text_len);
 			int i;
 			uint8 c = 0;
 			no++;
-			DEBUG("should no:%d  RECV_NO:%d\n", no, sp->no);
+		//	DEBUG("should no:%d  RECV_NO:%d\n", no, sp->no);
 	//		CHECK2(no==sp->no);
 			for(i = 0; i < sp->text_len; i++)
 			{
@@ -51,8 +52,7 @@ int main4()
 				c++;
 			}
 		}
-		else
-			usleep(1000000);
+			usleep(10000);
 	}
 	stop_pres_server();
 }

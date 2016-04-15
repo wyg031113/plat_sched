@@ -5,8 +5,8 @@
 #include "debug.h"
 #include "plat_sched.h"
 #define MAX_SEG_SIZE 2048  //临时接收缓冲区大小
-#define RECV_TIME_OUT 1000 //接收数据超时时间
-#define SLEEP_TIME 500000  //无客户端时睡眠时间
+#define RECV_TIME_OUT 1000 //接收数据超时时间 毫秒
+#define SLEEP_TIME 500  //无客户端时睡眠时间 毫秒
 
 //临时接收缓冲区，收到完成的一个包后会加入到环形缓冲区
 static char tmp_rcv_buf[MAX_SEG_SIZE];	
@@ -95,27 +95,18 @@ int rcv_data(int fd, void *data, int len)
 		ret = recv(fd, data, len, 0);
 		if((ret == -1 && errno != EAGAIN) || ret == 0)
 		{
-			//raise(SIGPIPE);
 			break;
 		}
 		else if(ret == -1 && errno == EAGAIN)
 		{
-			//DEBUG("RCV_TIMED_OUT:cur time:%d  last time:%d\n", time(NULL), last_rcv_heart);
-			/*if(time(NULL) - last_rcv_heart > WEB_HEART_BEAT_TIMEDOUT)
-			{
-
-				//raise(SIGPIPE);
-				DEBUG("no heart beat.....\n");
-				break;
-			}
-			*/
-			DEBUG("Timed out!\n");
+		
+			DEBUG("recv timed out!\n");
 
 		}
 		else
 		{
 			offset += ret;
-			//last_rcv_heart = time(NULL);
+			DEBUG("rcvd %d bytes\n", ret);
 		}
 	}
 	return offset;
@@ -140,7 +131,7 @@ int handle_client(int client_fd)
 
 
 		len += ret;	
-		DEBUG("RECV header:%d bytes, text len:%d bytes\n", ret, sp->text_len);
+		//DEBUG("RECV header:%d bytes, text len:%d bytes\n", ret, sp->text_len);
 		if(sp->text_len + sizeof(struct sched_pres) > MAX_SEG_SIZE)
 		{
 			INFO("tcp frame longer than tmp buffer!\n");
@@ -161,14 +152,14 @@ int handle_client(int client_fd)
 	{
 		if(cirbuf_get_free(&cb_rcv_ser) < len)
 		{
-			usleep(100000);
+			usleep(50000);
 			return PS_SUCCESS;
 		}
 		CHECK2(copy_cirbuf_from_user(&cb_rcv_ser, tmp_rcv_buf, len) == len);
 		DEBUG("PUT to circle %d bytes\n", len);
 		last_success = 1;
 	}
-	DEBUG("handle client stoped!");
+	INFO("handle client stoped!");
 	return PS_SUCCESS;;
 }
 /*
@@ -185,20 +176,22 @@ void pres_server_run(void)
 	CHECK(start_listen()); 
 	while(!stop_server)
 	{
-		DEBUG("run.., len = %d\n", len);
+		//DEBUG("run.., len = %d\n", len);
 		tfd = accept(pres_serfd, NULL, NULL); //接收客户端连接，由于pers_serfd设置为非阻塞，会立即返回
 		if(tfd == -1 && errno == EAGAIN)
 		{
-			DEBUG("ACCEPT timed out!\n");
+			//DEBUG("ACCEPT timed out!\n");
 			if(client_fd < 0)
-				usleep(500000);
+			{
+				usleep(SLEEP_TIME*1000);
+			}
 			else
 			{
-				DEBUG("Handle client!\n");
 				if(handle_client(client_fd) != PS_SUCCESS)
 				{
 					close(client_fd);
 					client_fd = -1;
+					have_client = 0;
 				}
 
 			}
