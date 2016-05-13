@@ -367,16 +367,8 @@ int do_task(void)
 	int header_len = 0;
 	status = TASK_RUNNING;
 	ASSERT(be_busy);
-	if(ptsk->de.type == D_TYPE_TEXT)//普通文本任务，不用发送文件
-	{
-		if(tcp_client_send_data(task_buf, task_len) != task_len)
-		{
-			status = TASK_FAIL;
-			return PS_SEND_ERROR;
-		}
-		status = TASK_SUCCESS;
-	}
-	else if(ptsk->de.type == D_TYPE_VOICE) //语音任务，要发送语音文件
+
+	if(ptsk->de.type == D_TYPE_VOICE) //语音任务，要发送语音文件
 	{
 		//准备文件
 		if(access(file, R_OK)!=0)
@@ -418,6 +410,17 @@ int do_task(void)
 		}		
 
 		INFO("Send pkt:size=%d\n", header_len + st.st_size);
+		status = TASK_SUCCESS;
+		return status;
+	}
+//	if(ptsk->de.type == D_TYPE_TEXT)//普通文本任务，不用发送文件
+	else
+	{
+		if(tcp_client_send_data(task_buf, task_len) != task_len)
+		{
+			status = TASK_FAIL;
+			return PS_SEND_ERROR;
+		}
 		status = TASK_SUCCESS;
 	}
 	return PS_SUCCESS;

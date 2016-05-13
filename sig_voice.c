@@ -47,6 +47,7 @@ static unsigned short preport = 6666;		//区长台UDP服务器监听端口
 
 
 static struct sockaddr_in webaddr;			
+socklen_t webaddr_len;
 static int websockfd;						//web端的socket
 
 /*判断web端是否启动
@@ -161,7 +162,8 @@ void handle_sig_voice(void)
 	serfd = start_server();
 	while(!stop_sv)
 	{
-		ret = recvfrom(serfd, rcv_buf, MAX_PKT_LEN, 0, NULL, NULL);
+		ret = recvfrom(serfd, rcv_buf, MAX_PKT_LEN, 0,
+				(struct sockaddr*)&webaddr, &webaddr_len);
 		if(ret<=0)
 		{
 			if(errno == EAGAIN)
