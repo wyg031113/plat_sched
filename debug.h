@@ -16,7 +16,7 @@
 
 //等级，0-关闭所有输出 1-只输出INFO 2-输出INFO和DEBUG
 //调试时设置为2，最后部署运行时设置为1
-//#define DEBUG_ON
+#define DEBUG_ON
 
 #ifdef DEBUG_TO_LOG
 	#ifdef DEBUG_ON /*输出DEBUG和INFO信息到日志*/

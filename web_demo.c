@@ -51,6 +51,7 @@ void check_ret(int ret)
 			DEBUG("\033[1;33m BUFFER FULL\033[0m \n");
 	}
 }
+//main2
 int main2()
 {
 	int cnt = 10000000;
@@ -95,7 +96,7 @@ int main2()
 
 			ret = snd_voice_sig();
 			check_ret(ret);
-			usleep(50000);
+			usleep(10000000);
 		}
 		//DEBUG("Main loop.\n\n");
 	}

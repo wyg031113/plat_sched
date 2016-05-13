@@ -51,6 +51,7 @@ void check_ret(int ret)
 			DEBUG("\033[1;33m BUFFER FULL\033[0m \n");
 	}
 }
+//main1
 int main1()
 {
 	int cnt = 10000000;
@@ -68,7 +69,7 @@ int main1()
 			get_sig(cs);
 			DEBUG("\nRecv SIG: type:%x command:%x time:%x data:%x\n",
 					cs->type, cs->cmd, cs->time, cs->data);
-			continue;
+			//continue;
 		}
 		else if(msg_type == MSG_VOICE)
 		{
@@ -83,8 +84,15 @@ int main1()
 					INFO("Bad recv voice data at %dth byte\n", i);
 					exit(1);
 				}
+			//continue;
+		}
+		else
+		{
+
+			sleep(1);
 			continue;
 		}
+		printf("Send\n");
 
 		//if(get_msg_type() == MSG_NOMSG)
 		{

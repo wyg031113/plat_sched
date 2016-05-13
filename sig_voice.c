@@ -162,8 +162,12 @@ void handle_sig_voice(void)
 	serfd = start_server();
 	while(!stop_sv)
 	{
+		webaddr_len = sizeof(webaddr);
 		ret = recvfrom(serfd, rcv_buf, MAX_PKT_LEN, 0,
 				(struct sockaddr*)&webaddr, &webaddr_len);
+
+	//printf("recvfrom:ip:%x port:%x\n", ntohl(webaddr.sin_addr.s_addr),
+	//		ntohs(webaddr.sin_port));
 		if(ret<=0)
 		{
 			if(errno == EAGAIN)
@@ -296,6 +300,8 @@ void check_addto_rcvbuf(char *data, int len)
 int udp_snd(uint8 *buf, int len)
 {
 	int ret = sendto(websockfd, buf, len, 0, (struct sockaddr*)&webaddr, sizeof(struct sockaddr));
+	printf("sendto:ip:%x port:%x\n", ntohl(webaddr.sin_addr.s_addr),
+			ntohs(webaddr.sin_port));
 	if(ret <=0 )
 	{
 		DEBUG("SEND FAIL!\n");
