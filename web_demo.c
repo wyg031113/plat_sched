@@ -56,8 +56,8 @@ int main2()
 {
 	int cnt = 10000000;
 	int ret;
-	set_preip_port("127.0.0.1", 7777);
-	set_webip_port("127.0.0.1", 6666);
+	set_preip_port("0.0.0.0", 7777);
+	set_webip_port("192.168.0.71", 7777);
 	start_sig_voice();
 	while(cnt--)
 	{

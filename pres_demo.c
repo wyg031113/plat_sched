@@ -56,7 +56,9 @@ int main1()
 {
 	int cnt = 10000000;
 	int ret;
+	set_preip_port("0.0.0.0", 7777);
 	start_sig_voice();
+
 	while(cnt--)
 	{
 		//sleep(1);
